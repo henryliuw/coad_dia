@@ -236,7 +236,7 @@ def main():
     useful_subset = pd.read_csv('useful_subset.csv')
     # preprocessing
     for i in useful_subset.index:
-        image_path = os.path.join(input_dir, useful_subset.loc[i, 'id'], useful_subset.loc[i, 'File me'])
+        image_path = os.path.join(args.input_dir, useful_subset.loc[i, 'id'], useful_subset.loc[i, 'File me'])
         name = str(i)
         print('%s\tstarting image %d' % (time.strftime('%Y.%m.%d',time.localtime(time.time())), i))
         preprocessing(image_path, args.output_dir, name)

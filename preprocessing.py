@@ -229,7 +229,7 @@ def preprocessing(image_path, save_dir, name, threshold_ratio=0.3):
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input_dir", default=''  ,help='determine the base dir of the dataset document')
+    parser.add_argument("--input_dir", default='/home/DiskB/tcga_coad_dia'  ,help='determine the base dir of the dataset document')
     parser.add_argument("--output_dir", default='preprocessed_data' ,help='determine the base dir of the dataset document')
     args = parser.parse_args()
     useful_subset = pd.read_csv('data/useful_subset.csv')

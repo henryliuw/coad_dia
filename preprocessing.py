@@ -10,6 +10,7 @@ import torchvision
 import torch
 import pickle
 import gc
+import time
 
 def Otsu_threshold(img, verbose=False):
     ''' 
@@ -216,7 +217,6 @@ def preprocessing(image_path, save_dir, name, threshold_ratio=0.3):
                             pass
 
             gc.collect()
-            print(slide_idx)
         except StopIteration:
             break
     
@@ -237,7 +237,7 @@ def main():
     for i in useful_subset.index:
         image_path = os.path.join(input_dir, useful_subset.loc[i, 'id'], useful_subset.loc[i, 'File me'])
         name = str(i)
-        print(starting  )
+        print('%s\tstarting image %d' % (time.strftime('%Y.%m.%d',time.localtime(time.time())), i))
         preprocessing(image_path, args.output_dir, name)
 
 if __name__ == "__main__":

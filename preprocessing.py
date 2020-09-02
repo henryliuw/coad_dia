@@ -233,7 +233,7 @@ def main():
     parser.add_argument("--input_dir", default='/home/DiskB/tcga_coad_dia'  ,help='determine the base dir of the dataset document')
     parser.add_argument("--output_dir", default='preprocessed_data' ,help='determine the base dir of the dataset document')
     args = parser.parse_args()
-    useful_subset = pd.read_csv('data/useful_subset.csv')
+    useful_subset = pd.read_csv('useful_subset.csv')
     # preprocessing
     for i in useful_subset.index:
         image_path = os.path.join(input_dir, useful_subset.loc[i, 'id'], useful_subset.loc[i, 'File me'])

@@ -182,10 +182,10 @@ def preprocessing(image_path, save_dir, name, threshold_ratio=0.3):
             img, slide_idx = next(gen)
             row_n = img.shape[0] // 224
             col_n = img.shape[1] // 224
-            if not os.path.isdir(save_dir):
-                os.mkdir(save_dir)
-            if not os.path.isdir(os.path.join(save_dir,'discarded')):
-                os.mkdir(os.path.join(save_dir,'discarded'))
+            if not os.path.isdir(os.path.join(save_dir, name)):
+                os.mkdir(os.path.join(save_dir, name))
+            if not os.path.isdir(os.path.join(save_dir, name,'discarded')):
+                os.mkdir(os.path.join(save_dir, name,'discarded'))
             gc.collect()
             # matplotlib.image.imsave(save_dir+'/slide_'+str(slide_idx)+'.png', img)
             
@@ -204,7 +204,7 @@ def preprocessing(image_path, save_dir, name, threshold_ratio=0.3):
                             pic_name = '%d-%d' % (i, j + slide_idx * 5)
                             img_BN, H, E = normalizeStaining(grid_ij)
                             img_BN = grid_ij
-                            matplotlib.image.imsave(save_dir+'/'+name+pic_name+'.png', img_BN)
+                            matplotlib.image.imsave(save_dir+'/'+name+'/'+pic_name+'.png', img_BN)
                             features = features_extraction(img_BN, feature_extractor)
                             name_list.append(pic_name)
                             if feature_vec is None:

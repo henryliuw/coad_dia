@@ -12,6 +12,7 @@ import pickle
 import gc
 import time
 import pandas as pd
+import random
 
 def Otsu_threshold(img, verbose=False):
     ''' 
@@ -199,7 +200,7 @@ def preprocessing(image_path, save_dir, name, threshold_ratio=0.3):
                     # print(ratio)
                     if ratio > threshold_ratio:
                         grid_ij = img[224*i:224*(i+1),224*j:224*(j+1),:3]
-                        plt.imshow(grid_ij)
+                        # plt.imshow(grid_ij)
                         try:
                             pic_name = '%d-%d' % (i, j + slide_idx * 5)
                             img_BN, H, E = normalizeStaining(grid_ij)
@@ -229,12 +230,92 @@ def preprocessing(image_path, save_dir, name, threshold_ratio=0.3):
     del name_list
     del feature_vec
 
+def read_samples(image_path, save_dir, name, sample_size, threshold_ratio=0.3):
+
+    slide = openslide.OpenSlide(os.path.join(image_path))
+    if not os.path.isdir(os.path.join(save_dir, name)):
+        os.mkdir(os.path.join(save_dir, name))
+    if not os.path.isdir(os.path.join(save_dir, name,'discarded')):
+        os.mkdir(os.path.join(save_dir, name,'discarded'))
+
+    low_resolution_img = np.array(slide.read_region((0,0), len(slide.level_dimensions)-1, slide.level_dimensions[-1]))
+    width, height = low_resolution_img.shape[0]//7, low_resolution_img.shape[1]//7
+    mask_ij = np.zeros((width, height), np.bool_)
+    Otsu_mask = Otsu_threshold(low_resolution_img[:,:,:3], True)
+    tile_list = []
+
+    for i in range(width):
+        for j in range(height):
+            ratio = Otsu_mask[i*7:(i+1)*7, j*7:(j+1)*7].sum()/7/7
+            # print(ratio)
+            if ratio > threshold_ratio:
+                mask_ij[i][j] = True
+                tile_list.append((i, j))
+
+    random.shuffle(tile_list)
+    resnet50_model = torchvision.models.resnet50(pretrained=True)
+    resnet50_model.eval()
+    feature_extractor = torch.nn.Sequential(*list(resnet50_model.children())[:-1])
+    level_downsamples = sorted([round(i) for i in slide.level_downsamples], reverse=True)
+    feature_vec = None
+    name_list = []
+    idx = 0
+    count = 0
+
+    print('sampling %d tiles from image %s' % (sample_size, name))
+    while 1:
+        if count==sample_size:
+            break
+        j, i = tile_list[idx]
+        pic_name = '%d-%d' % (i, j)
+        if 32 in level_downsamples:
+            idx_32 = level_downsamples.index(32)
+            img = np.array(slide.read_region((224 * i * 2 ** idx_32, 224 * j * 2**idx_32), idx_32, (224, 224)))
+        elif 64 in level_downsamples:
+            idx_64 = level_downsamples.index(64)
+            img_PIL = slide.read_region((224 * 2 * i * 2 ** idx_64, 224 * 2 * j * 2**idx_64), idx_64, (224 * 2, 224 * 2))
+            img =  np.asarray(img_PIL.resize((224, 224))) # resize
+        try:
+            img = img[:, :, :3]
+            img_BN, H, E = normalizeStaining(img)
+            img_BN = img
+            matplotlib.image.imsave(save_dir+'/'+name+'/' + pic_name + '.png', img)
+            features = features_extraction(img_BN, feature_extractor)
+            name_list.append((i,j))
+            if feature_vec is None:
+                feature_vec = features
+            else:
+                feature_vec = np.r_[feature_vec, features]
+            idx+=1
+            count += 1
+        except:
+            print('item %s is discarded for %s' % (pic_name, name))
+            matplotlib.image.imsave(save_dir+'/'+name+'/discarded/'+pic_name+'.png', img)
+            idx+=1
+            continue
+        
+    slide.close()
+    with open(os.path.join(save_dir,name+'_name.pkl'),'wb') as file:
+        pickle.dump(name_list, file)
+    np.savetxt(os.path.join(save_dir,name+'_features.txt'),feature_vec)
+    del name_list
+    del feature_vec
+
+
+def test():
+    image_path = 'data/TCGA-0.svs'
+    save_dir = 'data'
+    name ='sample-test'
+    read_samples(image_path, save_dir, name, 200)
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_dir", default='/home/DiskB/tcga_coad_dia'  ,help='determine the base dir of the dataset document')
     parser.add_argument("--output_dir", default='preprocessed_data' ,help='determine the base dir of the dataset document')
     parser.add_argument("--start_image", default=0 , type=int, help='starting image index of preprocessing')
+    parser.add_argument("--sample_n", default=0, type=int, help='starting image index of preprocessing')
     args = parser.parse_args()
     useful_subset = pd.read_csv('useful_subset.csv')
     # preprocessing
@@ -244,7 +325,11 @@ def main():
         image_path = os.path.join(args.input_dir, useful_subset.loc[i, 'id'], useful_subset.loc[i, 'File me'])
         name = str(i)
         print('%s\tstarting image %d' % (time.strftime('%Y.%m.%d.%H:%M:%S',time.localtime(time.time())), i))
-        preprocessing(image_path, args.output_dir, name)
+        if args.sample_n == 0:
+            preprocessing(image_path, args.output_dir, name)
+        else:
+            read_samples(image_path, save_dir, name, sample_size=args.sample_n)
 
 if __name__ == "__main__":
-    main()
+    #main()
+    test()

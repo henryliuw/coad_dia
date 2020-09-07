@@ -331,5 +331,5 @@ def main():
             read_samples(image_path, save_dir, name, sample_size=args.sample_n)
 
 if __name__ == "__main__":
-    #main()
-    test()
+    main()
+    #test()

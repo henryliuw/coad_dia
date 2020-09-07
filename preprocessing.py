@@ -170,7 +170,7 @@ def preprocessing(image_path, save_dir, name, threshold_ratio=0.3):
     feature_extractor = torch.nn.Sequential(*list(resnet50_model.children())[:-1])
     feature_vec = None
     name_list = []
-    slide_count = 5
+    slide_count = 3
     gen = read_image(slide, slide_count)
     
     #get Otsu mask on low resolution image
@@ -226,16 +226,21 @@ def preprocessing(image_path, save_dir, name, threshold_ratio=0.3):
     with open(os.path.join(save_dir,name+'_name.pkl'),'wb') as file:
         pickle.dump(name_list, file)
     np.savetxt(os.path.join(save_dir,name+'_features.txt'),feature_vec)
+    del name_list
+    del feature_vec
 
 def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_dir", default='/home/DiskB/tcga_coad_dia'  ,help='determine the base dir of the dataset document')
     parser.add_argument("--output_dir", default='preprocessed_data' ,help='determine the base dir of the dataset document')
+    parser.add_argument("--start_image", default=0 , type=int, help='starting image index of preprocessing')
     args = parser.parse_args()
     useful_subset = pd.read_csv('useful_subset.csv')
     # preprocessing
     for i in useful_subset.index:
+        if i < args.start_image:
+            continue
         image_path = os.path.join(args.input_dir, useful_subset.loc[i, 'id'], useful_subset.loc[i, 'File me'])
         name = str(i)
         print('%s\tstarting image %d' % (time.strftime('%Y.%m.%d.%H:%M:%S',time.localtime(time.time())), i))

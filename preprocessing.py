@@ -245,7 +245,7 @@ def read_samples(image_path, save_dir, name, sample_size, threshold_ratio=0.3):
     low_resolution_img = np.array(slide.read_region((0,0), len(slide.level_dimensions)-1, slide.level_dimensions[-1]))
     width, height = low_resolution_img.shape[0]//7, low_resolution_img.shape[1]//7
     mask_ij = np.zeros((width, height), np.bool_)
-    Otsu_mask = Otsu_threshold(low_resolution_img[:,:,:3], True)
+    Otsu_mask = Otsu_threshold(low_resolution_img[:,:,:3], False)
     tile_list = []
 
     for i in range(width):

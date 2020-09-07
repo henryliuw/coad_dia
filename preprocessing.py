@@ -183,6 +183,8 @@ def preprocessing(image_path, save_dir, name, threshold_ratio=0.3):
             img, slide_idx = next(gen)
             row_n = img.shape[0] // 224
             col_n = img.shape[1] // 224
+            if not os.path.isdir(save_dir):
+                os.mkdir(save_dir)
             if not os.path.isdir(os.path.join(save_dir, name)):
                 os.mkdir(os.path.join(save_dir, name))
             if not os.path.isdir(os.path.join(save_dir, name,'discarded')):
@@ -233,6 +235,8 @@ def preprocessing(image_path, save_dir, name, threshold_ratio=0.3):
 def read_samples(image_path, save_dir, name, sample_size, threshold_ratio=0.3):
 
     slide = openslide.OpenSlide(os.path.join(image_path))
+    if not os.path.isdir(save_dir):
+        os.mkdir(save_dir)
     if not os.path.isdir(os.path.join(save_dir, name)):
         os.mkdir(os.path.join(save_dir, name))
     if not os.path.isdir(os.path.join(save_dir, name,'discarded')):

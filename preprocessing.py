@@ -328,7 +328,7 @@ def main():
         if args.sample_n == 0:
             preprocessing(image_path, args.output_dir, name)
         else:
-            read_samples(image_path, save_dir, name, sample_size=args.sample_n)
+            read_samples(image_path,  args.output_dir, name, sample_size=args.sample_n)
 
 if __name__ == "__main__":
     main()

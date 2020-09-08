@@ -273,7 +273,7 @@ def read_samples(image_path, save_dir, name, sample_size, threshold_ratio=0.3):
         try:
             j, i = tile_list[idx]
         except IndexError:
-            print('image %s does not have enough tiles for sampling, please inspect this datapoint')
+            print('image %s does not have enough tiles for sampling, please inspect this datapoint' % name)
             break
         pic_name = '%d-%d' % (i, j)
         if 32 in level_downsamples:

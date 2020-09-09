@@ -42,12 +42,12 @@ def main():
     id1, id2, id3, id4 = int(0.2 * len(Y)), int(0.4 * len(Y)), int(0.6 * len(Y)), int(0.8 * len(Y))
     perm_idx = np.array((perm[:id1], perm[id1:id2], perm[id2:id3], perm[id3:id4], perm[id4:]))
 
-    n_epoch = 400
+    n_epoch = 1000
     lr = 0.0002
     weight_decay = 0.1
     
     if not os.path.isdir('figure'):
-        os.mkdir('figuire')
+        os.mkdir('figure')
 
     acc_folds = []
     auc_folds = []
@@ -88,24 +88,25 @@ def main():
                 print("%s epoch:%d loss:%.3f acc:%.3f auc:%.3f test_loss:%.3f test_acc:%.3f test_auc:%.3f" % 
                     (time.strftime('%m.%d %H:%M:%S', time.localtime(time.time())), epoch, loss, accuracy(result, Y_train), auc(result, Y_train), loss_test, accuracy(result_test, Y_test), auc(result_test, Y_test)))
                 # early stop
-                if minimum_loss is None or minimum_loss > loss:
-                    minimum_loss = loss
+                if minimum_loss is None or minimum_loss > loss_test:
+                    minimum_loss = loss_test
                     auc_fold = auc(result_test, Y_test)
                     acc_fold = accuracy(result_test, Y_test)
                     early_stop_count = 0
                 else:
                     early_stop_count += 1
-                if early_stop_count > 3:
+                if early_stop_count > 2:
                     print('early stop at epoch %d' % epoch)
                     break
+
         train_history = np.array(train_history)
         test_history = np.array(test_history)
         acc_folds.append(acc_fold)
         auc_folds.append(auc_fold)
-        plt.plot(train_history[:, 0], train_history[:, 1])
-        plt.plot(test_history[:, 0], test_history[:, 1])
-        
-        plt.savefig('image/fold.png')
+        plt.plot(train_history[:, 0], train_history[:, 1], label='train')
+        plt.plot(test_history[:, 0], test_history[:, 1], label='test')
+        plt.legend()
+        plt.savefig('figure/fold%d.png' % i)
         plt.cla()
     
     print('CV-auc:%.3f' % sum(auc_folds) / 5)

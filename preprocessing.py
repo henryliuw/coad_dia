@@ -73,13 +73,13 @@ def normalizeStaining(img, saveFile=None, Io=240, alpha=1, beta=0.15):
     # remove transparent pixels
     ODhat = OD[~np.any(OD<beta, axis=1)]
         
-    # compute eigenvectors
+    # compute eigenvectors of the covariance between each channel of RGB
     eigvals, eigvecs = np.linalg.eigh(np.cov(ODhat.T))
     
     #eigvecs *= -1
     
     #project on the plane spanned by the eigenvectors corresponding to the two 
-    # largest eigenvalues    
+    # largest eigenvalues, which is sorted by ascending value
     That = ODhat.dot(eigvecs[:,1:3])
     
     phi = np.arctan2(That[:,1],That[:,0])
@@ -339,5 +339,5 @@ def main():
             read_samples(image_path,  args.output_dir, name, sample_size=args.sample_n)
 
 if __name__ == "__main__":
-    main()
-    #test()
+    #main()
+    test()

@@ -124,6 +124,9 @@ def main():
         plt.legend()
         plt.savefig('figure/sample_%d_fold%d.png' % (args.sample_n, i))
         plt.cla()
+
+        del X_train, X_test, Y_train, Y_test
+        torch.cuda.empty_cache()
     
     print('CV-auc:%.3f' % sum(auc_folds) / 5)
     print('CV-acc:%.3f' % sum(acc_folds) / 5)

@@ -17,14 +17,12 @@ def main():
     parser.add_argument("--evidence_n", default=20, type=int, help='how many top/bottom tiles to pick from ')
     args = parser.parse_args()
     
-    data_dir = args.data_dir
     csv_file = 'data/useful_subset.csv'
     useful_subset = pd.read_csv(csv_file)
-    quick_load = True
     gpu = True
 
-    X_cached_file = os.path.join(data_dir, 'X_%d.pkl' % args.sample_n)
-    Y_cached_file = os.path.join(data_dir, 'Y_%d.pkl' % args.sample_n)
+    X_cached_file = os.path.join(args.data_dir, 'X_%d.pkl' % args.sample_n)
+    Y_cached_file = os.path.join(args.data_dir, 'Y_%d.pkl' % args.sample_n)
     if os.path.exists(X_cached_file) and os.path.exists(Y_cached_file):
         print('loading cached data')
         with open(X_cached_file,'rb') as file:
@@ -35,21 +33,23 @@ def main():
         print('reading data from preprocessed file')
         useful_subset = pd.read_csv(csv_file)
         Y = useful_subset.loc[0, 'outcome'] == 'good'
-        X = np.loadtxt(data_dir+'/'+'0_features.txt').reshape(1, args.sample_n, 2048)
+        X = np.loadtxt(args.data_dir+'/'+'0_features.txt').reshape(1, args.sample_n, 2048)
         size = len(useful_subset)
         for i in range(1, size):
-            X_this = np.loadtxt(data_dir+'/'+str(i)+'_features.txt')
+            X_this = np.loadtxt(args.data_dir+'/'+str(i)+'_features.txt')
             if len(X_this)==args.sample_n:
                 X = np.r_[X, X_this.reshape(1, args.sample_n, 2048)]
                 Y = np.r_[Y, useful_subset.loc[i, 'outcome'] == 'good']
             print("\r", "reading data input  %d/%d" % (i, size) , end='', flush=True)
         
         X = X.transpose((0, 2, 1))
-        
-        with open(X_cached_file,'wb') as file:
-            pickle.dump(X, file)
-        with open(Y_cached_file,'wb') as file:
-            pickle.dump(Y, file)
+        try:
+            with open(X_cached_file,'wb') as file:
+                pickle.dump(X, file)
+            with open(Y_cached_file,'wb') as file:
+                pickle.dump(Y, file)
+        except Exception as e:
+            print(e)
 
     if gpu:
         X, Y = torch.Tensor(X).cuda(), torch.Tensor(Y).cuda()

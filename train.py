@@ -36,7 +36,6 @@ def main():
         useful_subset = pd.read_csv(csv_file)
         Y = useful_subset.loc[0, 'outcome'] == 'good'
         X = np.loadtxt(data_dir+'/'+'0_features.txt').reshape(1, args.sample_n, 2048)
-       
         size = len(useful_subset)
         for i in range(1, size):
             X_this = np.loadtxt(data_dir+'/'+str(i)+'_features.txt')
@@ -44,7 +43,8 @@ def main():
                 X = np.r_[X, X_this.reshape(1, args.sample_n, 2048)]
                 Y = np.r_[Y, useful_subset.loc[i, 'outcome'] == 'good']
             print("\r", "reading data input  %d/%d" % (i, size) , end='', flush=True)
-            X = X.transpose((0, 2, 1))
+        
+        X = X.transpose((0, 2, 1))
         
         with open(X_cached_file,'wb') as file:
             pickle.dump(X, file)

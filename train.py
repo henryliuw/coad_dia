@@ -21,14 +21,14 @@ def main():
     useful_subset = pd.read_csv(csv_file)
     gpu = True
 
-    X_cached_file = os.path.join(args.data_dir, 'X_%d.pkl' % args.sample_n)
-    Y_cached_file = os.path.join(args.data_dir, 'Y_%d.pkl' % args.sample_n)
+    X_cached_file = os.path.join(args.data_dir, 'X_%d.npy' % args.sample_n)
+    Y_cached_file = os.path.join(args.data_dir, 'Y_%d.npy' % args.sample_n)
     if os.path.exists(X_cached_file) and os.path.exists(Y_cached_file):
         print('loading cached data')
         with open(X_cached_file,'rb') as file:
-            X = pickle.load(file)
+            X = np.load(file)
         with open(Y_cached_file,'rb') as file:
-            Y = pickle.load(file)
+            Y = np.load(file)
     else:
         print('reading data from preprocessed file')
         useful_subset = pd.read_csv(csv_file)
@@ -45,9 +45,9 @@ def main():
         X = X.transpose((0, 2, 1))
         try:
             with open(X_cached_file,'wb') as file:
-                pickle.dump(X, file)
+                np.save(file, X)
             with open(Y_cached_file,'wb') as file:
-                pickle.dump(Y, file)
+                np.save(file, Y)
         except Exception as e:
             print(e)
 

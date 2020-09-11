@@ -114,6 +114,7 @@ def main():
                 if early_stop_count > 2 and epoch>100 and auc_fold>0.5:
                     print('early stop at epoch %d' % epoch)
                     break
+                print(early_stop_count)
 
         train_history = np.array(train_history)
         test_history = np.array(test_history)

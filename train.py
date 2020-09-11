@@ -27,9 +27,9 @@ def main():
     Y_cached_file = os.path.join(data_dir, 'Y_%d.pkl' % args.sample_n)
     if os.path.exists(X_cached_file) and os.path.exists(Y_cached_file):
         print('loading cached data')
-        with open(,'rb') as file:
+        with open(X_cached_file,'rb') as file:
             X = pickle.load(file)
-        with open(os.path.join(data_dir, 'Y_%d.pkl' % args.sample_n),'rb') as file:
+        with open(Y_cached_file,'rb') as file:
             Y = pickle.load(file)
     else:
         print('reading data from preprocessed file')

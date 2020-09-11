@@ -111,7 +111,7 @@ def main():
                     early_stop_count = 0
                 else:
                     early_stop_count += 1
-                if early_stop_count > 2 and epoch>200 and auc_fold>0.5:
+                if early_stop_count > 2 and epoch>100 and auc_fold>0.5:
                     print('early stop at epoch %d' % epoch)
                     break
 
@@ -128,8 +128,8 @@ def main():
         del X_train, X_test, Y_train, Y_test
         torch.cuda.empty_cache()
     
-    print('CV-auc:%.3f' % sum(auc_folds) / 5)
-    print('CV-acc:%.3f' % sum(acc_folds) / 5)
+    print('CV-auc:%.3f' % (sum(auc_folds) / 5))
+    print('CV-acc:%.3f' % (sum(acc_folds) / 5))
 
 
 if __name__ == '__main__':

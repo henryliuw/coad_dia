@@ -337,8 +337,8 @@ def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_dir", default='/home/DiskB/tcga_coad_dia'  ,help='determine the base dir of the dataset document')
-    parser.add_argument("--output_dir", default='preprocessed_data' ,help='determine the base dir of the dataset document')
-    parser.add_argument("--start_image", default=0 , type=int, help='starting image index of preprocessing')
+    parser.add_argument("--output_dir", default='preprocessed_data' ,help='determine the output dir of preprocessed data')
+    parser.add_argument("--start_image", default=0 , type=int, help='starting image index of preprocessing (for continuing unexpected break)')
     parser.add_argument("--sample_n", default=0, type=int, help='sample size of each image')
     parser.add_argument("--repl_n", default=0, type=int, help='replication of each image')
     args = parser.parse_args()

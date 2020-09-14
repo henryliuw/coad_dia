@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch
 from sklearn.metrics import roc_auc_score
+from lifelines import CoxPHFitter
 class Predictor(nn.Module):
     def __init__(self, evidence_size=5, layers=[200, 100, 1]):
         # tile scoring
@@ -40,3 +41,10 @@ def auc(result, target):
         result = result.cpu()
         target = target.cpu()
     return roc_auc_score(target.numpy(), result.detach().numpy())
+
+def c_index(result, df):
+    if result.is_cuda:
+        result = result.cpu()
+    df['predict'] = result.detach().numpy()
+    cph = CoxPHFitter().fit(df, duration_col="time", event_col="y", formula="predict")
+    return cph.concordance_index_

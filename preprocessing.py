@@ -306,7 +306,7 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
             img = img[:, :, :3]
             img_BN, H, E = normalizeStaining(img)
             img_BN = img
-            matplotlib.image.imsave(save_dir+'/'+name_i+'/'+pic_name+'.png', img)
+            # matplotlib.image.imsave(save_dir+'/'+name_i+'/'+pic_name+'.png', img)
             features = features_extraction(img_BN, feature_extractor)
             name_list.append((i,j))
             if feature_vec is None:
@@ -317,7 +317,7 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
             count += 1
         except:
             # print('item %s is discarded for %s' % (pic_name, name))
-            matplotlib.image.imsave(save_dir+'/'+name+'/discarded/'+pic_name+'.png', img)
+            # matplotlib.image.imsave(save_dir+'/'+name_i+'/discarded/'+pic_name+'.png', img)
             idx+=1
             continue
         

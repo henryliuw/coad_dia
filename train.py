@@ -14,13 +14,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", default='data/sampling', help='determine the base dir of the dataset document')
     parser.add_argument("--sample_n", default=1000, type=int, help='starting image index of preprocessing')
-    parser.add_argument("--evidence_n", default=25, type=int, help='how many top/bottom tiles to pick from ')
+    parser.add_argument("--evidence_n", default=25, type=int, help='how many top/bottom tiles to pick from')
+    parser.add_argument("--repl_n", default=25, type=int, help='how many resampled replications')
     args = parser.parse_args()
     
     csv_file = 'data/useful_subset.csv'
     useful_subset = pd.read_csv(csv_file)
     gpu = True
-
+    X = None
+    Y = None
     X_cached_file = os.path.join(args.data_dir, 'X_%d.npy' % args.sample_n)
     Y_cached_file = os.path.join(args.data_dir, 'Y_%d.npy' % args.sample_n)
     if os.path.exists(X_cached_file) and os.path.exists(Y_cached_file):
@@ -32,15 +34,21 @@ def main():
     else:
         print('reading data from preprocessed file')
         useful_subset = pd.read_csv(csv_file)
-        Y = useful_subset.loc[0, 'outcome'] == 'good'
-        X = np.loadtxt(args.data_dir+'/'+'0_features.txt').reshape(1, args.sample_n, 2048)
         size = len(useful_subset)
         for i in range(1, size):
-            X_this = np.loadtxt(args.data_dir+'/'+str(i)+'_features.txt')
-            if len(X_this)==args.sample_n:
-                X = np.r_[X, X_this.reshape(1, args.sample_n, 2048)]
-                Y = np.r_[Y, useful_subset.loc[i, 'outcome'] == 'good']
-            print("\r", "reading data input  %d/%d" % (i, size) , end='', flush=True)
+            for j in range(repl_n):
+                X_this = np.loadtxt(args.data_dir+'/'+str(i)+'_'+str(j)+'_features.txt')
+                Y_this = useful_subset.loc[i, 'outcome'] == 'good'
+                if len(X_this)==args.sample_n:
+                    if X == None:
+                        X = X_this
+                    else:
+                        X = np.r_[X, X_this.reshape(1, args.sample_n, 2048)]
+                    if Y == None:
+                        Y = Y_this
+                    else:
+                        Y = np.r_[Y, Y_this]
+                print("\r", "reading data input  %d/%d" % (i, size) , end='', flush=True)
         
         X = X.transpose((0, 2, 1))
         try:

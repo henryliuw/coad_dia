@@ -33,7 +33,7 @@ def accuracy(result, target):
     if result.is_cuda:
         result = result.cpu()
         target = target.cpu()
-    return torch.eq(result > 0.5, target).sum().numpy() / len(target)
+    return torch.eq(result > 0.5, target.type(torch.BoolTensor)).sum().numpy() / len(target)
 
 def auc(result, target):
     if result.is_cuda:

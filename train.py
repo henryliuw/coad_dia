@@ -14,7 +14,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", default='data/sampling', help='determine the base dir of the dataset document')
     parser.add_argument("--sample_n", default=1000, type=int, help='starting image index of preprocessing')
-    parser.add_argument("--evidence_n", default=20, type=int, help='how many top/bottom tiles to pick from ')
+    parser.add_argument("--evidence_n", default=25, type=int, help='how many top/bottom tiles to pick from ')
     args = parser.parse_args()
     
     csv_file = 'data/useful_subset.csv'
@@ -59,9 +59,10 @@ def main():
     perm_idx = np.array((perm[:id1], perm[id1:id2], perm[id2:id3], perm[id3:id4], perm[id4:]))
 
     n_epoch = 1000
-    lr = 0.0002
-    weight_decay = 0.1
-    
+    lr = 0.0005
+    weight_decay = 0.05
+    overfit = 0
+
     if not os.path.isdir('figure'):
         os.mkdir('figure')
 
@@ -83,10 +84,10 @@ def main():
         acc_fold = None
         early_stop_count = 0
         
-        model = Predictor(evidence_size=args.evidence_n)
+        model = Predictor(evidence_size=args.evidence_n, layers=[100, 50, 1])
         if gpu:
             model = model.cuda()
-        optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+        optimizer = torch.optim.RMSprop(model.parameters(), lr=lr, weight_decay=weight_decay)
         
         print('starting fold %d' % i)
         
@@ -109,12 +110,20 @@ def main():
                     auc_fold = auc(result_test, Y_test)
                     acc_fold = accuracy(result_test, Y_test)
                     early_stop_count = 0
+                elif auc(result_test, Y_test) > auc_fold and auc(result_test, Y_test)>0.5 and accuracy(result_test, Y_test) >= acc_fold:
+                    minimum_loss = loss_test
+                    auc_fold = auc(result_test, Y_test)
+                    acc_fold = accuracy(result_test, Y_test)
+                    early_stop_count = 0
                 else:
                     early_stop_count += 1
-                if early_stop_count > 2 and epoch>100 and auc_fold>0.5:
+                if (early_stop_count > 3 and epoch>100 and auc_fold>0.55):
                     print('early stop at epoch %d' % epoch)
                     break
-                print(early_stop_count)
+                if overfit == 0 and early_stop_count > 7:
+                    weight_decay *= 2
+                    optimizer = torch.optim.RMSprop(model.parameters(), lr=lr, weight_decay=weight_decay)
+                    overfit = 1
 
         train_history = np.array(train_history)
         test_history = np.array(test_history)
@@ -125,6 +134,7 @@ def main():
         plt.legend()
         plt.savefig('figure/sample_%d_fold%d.png' % (args.sample_n, i))
         plt.cla()
+        print("acc:%.3f\tauc:%.3f"  % (acc_fold, auc_fold))
 
         del X_train, X_test, Y_train, Y_test
         torch.cuda.empty_cache()

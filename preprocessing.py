@@ -342,7 +342,7 @@ def main():
     parser.add_argument("--sample_n", default=0, type=int, help='sample size of each image')
     parser.add_argument("--repl_n", default=0, type=int, help='replication of each image')
     args = parser.parse_args()
-    useful_subset = pd.read_csv('useful_subset.csv')
+    useful_subset = pd.read_csv('data/useful_subset.csv')
     # preprocessing
     for i in useful_subset.index:
         if i < args.start_image:

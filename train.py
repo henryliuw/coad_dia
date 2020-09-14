@@ -36,8 +36,11 @@ def main():
         useful_subset = pd.read_csv(csv_file)
         size = len(useful_subset)
         for i in range(1, size):
-            for j in range(repl_n):
-                X_this = np.loadtxt(args.data_dir+'/'+str(i)+'_'+str(j)+'_features.txt')
+            for j in range(args.repl_n):
+                if args.repl_n == 0:
+                    X_this = np.loadtxt(args.data_dir+'/'+str(i)+'_features.txt')
+                else:
+                    X_this = np.loadtxt(args.data_dir+'/'+str(i)+'_'+str(j)+'_features.txt')
                 Y_this = useful_subset.loc[i, 'outcome'] == 'good'
                 if len(X_this)==args.sample_n:
                     if X == None:

@@ -232,15 +232,9 @@ def preprocessing(image_path, save_dir, name, threshold_ratio=0.3):
     del name_list
     del feature_vec
 
-def read_samples(image_path, save_dir, name, sample_size, threshold_ratio=0.3):
+def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ratio=0.3):
 
     slide = openslide.OpenSlide(os.path.join(image_path))
-    if not os.path.isdir(save_dir):
-        os.mkdir(save_dir)
-    if not os.path.isdir(os.path.join(save_dir, name)):
-        os.mkdir(os.path.join(save_dir, name))
-    if not os.path.isdir(os.path.join(save_dir, name,'discarded')):
-        os.mkdir(os.path.join(save_dir, name,'discarded'))
 
     low_resolution_img = np.array(slide.read_region((0,0), len(slide.level_dimensions)-1, slide.level_dimensions[-1]))
     width, height = low_resolution_img.shape[0]//7, low_resolution_img.shape[1]//7
@@ -265,15 +259,36 @@ def read_samples(image_path, save_dir, name, sample_size, threshold_ratio=0.3):
     name_list = []
     idx = 0
     count = 0
+    repl_i = 0
+    name_i = name+'_'+str(repl_i)
+    if not os.path.isdir(save_dir):
+        os.mkdir(save_dir)
+    if not os.path.isdir(os.path.join(save_dir, name_i)):
+        os.mkdir(os.path.join(save_dir, name_i))
+    if not os.path.isdir(os.path.join(save_dir, name_i,'discarded')):
+        os.mkdir(os.path.join(save_dir, name_i,'discarded'))
 
     print('sampling %d tiles from image %s' % (sample_size, name))
     while 1:
-        if count==sample_size:
-            break
+        if count == sample_size:
+            if repl_i == repl_n:
+                break
+            else:
+                with open(os.path.join(save_dir,name_i+'_name.pkl'),'wb') as file:
+                    pickle.dump(name_list, file)
+                    np.savetxt(os.path.join(save_dir, name_i + '_features.txt'), feature_vec)
+                count = 0
+                repl_i += 1
+                name_i = name+'_'+str(repl_i)
+                if not os.path.isdir(os.path.join(save_dir, name_i)):
+                    os.mkdir(os.path.join(save_dir, name_i))
+                if not os.path.isdir(os.path.join(save_dir, name_i,'discarded')):
+                    os.mkdir(os.path.join(save_dir, name_i, 'discarded'))
+                print('replica %d sampling succeed' % repl_i)
         try:
             j, i = tile_list[idx]
         except IndexError:
-            print('image %s does not have enough tiles for sampling, please inspect this datapoint' % name)
+            print('image %s does not have enough tiles for sampling for replica %d' % (name, repl_i))
             break
         pic_name = '%d-%d' % (i, j)
         if 32 in level_downsamples:
@@ -287,7 +302,7 @@ def read_samples(image_path, save_dir, name, sample_size, threshold_ratio=0.3):
             img = img[:, :, :3]
             img_BN, H, E = normalizeStaining(img)
             img_BN = img
-            matplotlib.image.imsave(save_dir+'/'+name+'/' + pic_name + '.png', img)
+            matplotlib.image.imsave(save_dir+'/'+name_i+'/'+pic_name+'.png', img)
             features = features_extraction(img_BN, feature_extractor)
             name_list.append((i,j))
             if feature_vec is None:
@@ -297,15 +312,12 @@ def read_samples(image_path, save_dir, name, sample_size, threshold_ratio=0.3):
             idx+=1
             count += 1
         except:
-            print('item %s is discarded for %s' % (pic_name, name))
+            # print('item %s is discarded for %s' % (pic_name, name))
             matplotlib.image.imsave(save_dir+'/'+name+'/discarded/'+pic_name+'.png', img)
             idx+=1
             continue
         
     slide.close()
-    with open(os.path.join(save_dir,name+'_name.pkl'),'wb') as file:
-        pickle.dump(name_list, file)
-    np.savetxt(os.path.join(save_dir,name+'_features.txt'),feature_vec)
     del name_list
     del feature_vec
 
@@ -314,7 +326,7 @@ def test():
     image_path = 'data/TCGA-0.svs'
     save_dir = 'data'
     name ='sample-test'
-    read_samples(image_path, save_dir, name, 200)
+    read_samples(image_path, save_dir, name, 200, repl_n=3)
 
 
 def main():
@@ -323,7 +335,8 @@ def main():
     parser.add_argument("--input_dir", default='/home/DiskB/tcga_coad_dia'  ,help='determine the base dir of the dataset document')
     parser.add_argument("--output_dir", default='preprocessed_data' ,help='determine the base dir of the dataset document')
     parser.add_argument("--start_image", default=0 , type=int, help='starting image index of preprocessing')
-    parser.add_argument("--sample_n", default=0, type=int, help='starting image index of preprocessing')
+    parser.add_argument("--sample_n", default=0, type=int, help='sample size of each image')
+    parser.add_argument("--repl_n", default=0, type=int, help='replication of each image')
     args = parser.parse_args()
     useful_subset = pd.read_csv('useful_subset.csv')
     # preprocessing
@@ -336,7 +349,7 @@ def main():
         if args.sample_n == 0:
             preprocessing(image_path, args.output_dir, name)
         else:
-            read_samples(image_path,  args.output_dir, name, sample_size=args.sample_n)
+            read_samples(image_path,  args.output_dir, name, sample_size=args.sample_n, repl_n=args.repl_n)
 
 if __name__ == "__main__":
     #main()

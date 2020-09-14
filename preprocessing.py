@@ -270,27 +270,30 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
 
     print('sampling %d tiles from image %s' % (sample_size, name))
     while 1:
-        if count == sample_size:
+        if count == sample_size:    
+            with open(os.path.join(save_dir,name_i+'_name.pkl'),'wb') as file:
+                pickle.dump(name_list, file)
+            np.savetxt(os.path.join(save_dir, name_i + '_features.txt'), feature_vec)
+            feature_vec = None
+            name_list = []
+            count = 0
+            repl_i += 1
+            name_i = name+'_'+str(repl_i)
+            if not os.path.isdir(os.path.join(save_dir, name_i)):
+                os.mkdir(os.path.join(save_dir, name_i))
+            if not os.path.isdir(os.path.join(save_dir, name_i,'discarded')):
+                os.mkdir(os.path.join(save_dir, name_i, 'discarded'))
+            print('replica %d sampling succeed' % repl_i)
             if repl_i == repl_n:
                 break
-            else:
-                with open(os.path.join(save_dir,name_i+'_name.pkl'),'wb') as file:
-                    pickle.dump(name_list, file)
-                    np.savetxt(os.path.join(save_dir, name_i + '_features.txt'), feature_vec)
-                count = 0
-                repl_i += 1
-                name_i = name+'_'+str(repl_i)
-                if not os.path.isdir(os.path.join(save_dir, name_i)):
-                    os.mkdir(os.path.join(save_dir, name_i))
-                if not os.path.isdir(os.path.join(save_dir, name_i,'discarded')):
-                    os.mkdir(os.path.join(save_dir, name_i, 'discarded'))
-                print('replica %d sampling succeed' % repl_i)
+        # get idx
         try:
             j, i = tile_list[idx]
         except IndexError:
             print('image %s does not have enough tiles for sampling for replica %d' % (name, repl_i))
             break
         pic_name = '%d-%d' % (i, j)
+        # read
         if 32 in level_downsamples:
             idx_32 = level_downsamples.index(32)
             img = np.array(slide.read_region((224 * i * 2 ** idx_32, 224 * j * 2**idx_32), idx_32, (224, 224)))
@@ -298,6 +301,7 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
             idx_64 = level_downsamples.index(64)
             img_PIL = slide.read_region((224 * 2 * i * 2 ** idx_64, 224 * 2 * j * 2**idx_64), idx_64, (224 * 2, 224 * 2))
             img =  np.asarray(img_PIL.resize((224, 224))) # resize
+        # feature extraction
         try:
             img = img[:, :, :3]
             img_BN, H, E = normalizeStaining(img)
@@ -326,7 +330,7 @@ def test():
     image_path = 'data/TCGA-0.svs'
     save_dir = 'data'
     name ='sample-test'
-    read_samples(image_path, save_dir, name, 200, repl_n=3)
+    read_samples(image_path, save_dir, name, 50, repl_n=3)
 
 
 def main():
@@ -352,5 +356,5 @@ def main():
             read_samples(image_path,  args.output_dir, name, sample_size=args.sample_n, repl_n=args.repl_n)
 
 if __name__ == "__main__":
-    #main()
-    test()
+    main()
+    #test()

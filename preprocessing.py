@@ -249,7 +249,8 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
             if ratio > threshold_ratio:
                 mask_ij[i][j] = True
                 tile_list.append((i, j))
-
+    #print(len(tile_list))
+    #return
     random.shuffle(tile_list)
     resnet50_model = torchvision.models.resnet50(pretrained=True)
     resnet50_model.eval()

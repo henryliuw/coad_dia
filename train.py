@@ -17,6 +17,7 @@ def main():
     parser.add_argument("--evidence_n", default=20, type=int, help='how many top/bottom tiles to pick from')
     parser.add_argument("--repl_n", default=3, type=int, help='how many resampled replications')
     parser.add_argument("--image_split", action='store_true', help='if use image_split')
+    parser.add_argument("--batch_size", default=100, type=int, help="batch size")
     args = parser.parse_args()
 
     image_split = args.image_split
@@ -60,10 +61,11 @@ def main():
                         Y = Y_this
                     else:
                         Y = np.r_[Y, Y_this]
+                    image_file = args.data_dir+'/'+str(i)+'_'+str(j)+'_name.pkl'
                     if df_new is None:
-                        df_new = pd.DataFrame({"y": Y_this, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i}, index=[0])
+                        df_new = pd.DataFrame({"y": Y_this, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file}, index=[0])
                     else:
-                        df_new = df_new.append({"y": Y_this, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i}, ignore_index=True)
+                        df_new = df_new.append({"y": Y_this, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file}, ignore_index=True)
                 print("\r", "reading data input  %d/%d" % (i, size) , end='', flush=True)
         
         X = X.transpose((0, 2, 1))
@@ -173,13 +175,14 @@ def main():
             plt.legend()
             plt.savefig('figure/sample_%d_fold%d.png' % (args.sample_n, i))
             plt.cla()
+            model.save(args.save_dir)
             print("acc:%.3f\tauc:%.3f\tc_index:%.3f"  % (acc_fold, auc_fold, c_index_fold))
             total_round += 1
             if gpu:
                 del dataloader.X_train, dataloader.Y_train, dataloader.X_test, dataloader.Y_test
                 del X_test, Y_test, X_train, Y_train, model, optimizer
                 torch.cuda.empty_cache()
-    
+                
     print('CV-acc:%.3f CV-auc:%.3f CV-c-index:%.3f' % (sum(acc_folds) / 5 / manytimes_n, sum(auc_folds) / 5 / manytimes_n, sum(c_index_folds) / 5 / manytimes_n))
 
 

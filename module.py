@@ -36,6 +36,12 @@ class Predictor(nn.Module):
         results = self.sigmoid_f(logits).view(-1)
         return results
 
+    def save(self, save_dir):
+        torch.save(self.state_dict(), save_dir+'/model')
+
+    def load(self, save_dir):
+        self.load_state_dict(torch.load(save_dir+'/model'))
+
 def weight_init(m):
     if isinstance(m, torch.nn.Conv1d) or isinstance(m, torch.nn.Linear):
         torch.nn.init.kaiming_normal_(m.weight)

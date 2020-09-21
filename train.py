@@ -175,7 +175,7 @@ def main():
             plt.legend()
             plt.savefig('figure/sample_%d_fold%d.png' % (args.sample_n, i))
             plt.cla()
-            model.save(args.save_dir)
+            model.save(args.data_dir)
             print("acc:%.3f\tauc:%.3f\tc_index:%.3f"  % (acc_fold, auc_fold, c_index_fold))
             total_round += 1
             if gpu:

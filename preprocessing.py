@@ -232,7 +232,7 @@ def preprocessing(image_path, save_dir, name, threshold_ratio=0.3):
     del name_list
     del feature_vec
 
-def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ratio=0.3):
+def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ratio=0.3, evaluate=False):
 
     slide = openslide.OpenSlide(os.path.join(image_path))
 
@@ -249,7 +249,9 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
             if ratio > threshold_ratio:
                 mask_ij[i][j] = True
                 tile_list.append((i, j))
-    #print(len(tile_list))
+    if evaluate:
+        sample_size = len(tile_list)
+    print(len(tile_list))
     #return
     random.shuffle(tile_list)
     resnet50_model = torchvision.models.resnet50(pretrained=True)
@@ -271,7 +273,8 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
 
     print('sampling %d tiles from image %s' % (sample_size, name))
     while 1:
-        if count == sample_size:    
+        # success exit branch
+        if count == sample_size or idx == len(tile_list):   
             with open(os.path.join(save_dir,name_i+'_name.pkl'),'wb') as file:
                 pickle.dump(name_list, file)
             np.savetxt(os.path.join(save_dir, name_i + '_features.txt'), feature_vec)
@@ -290,9 +293,10 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
         # get idx
         try:
             j, i = tile_list[idx]
-        except IndexError:
+        except IndexError: # unsuccessful exit branch
             print('image %s does not have enough tiles for sampling for replica %d' % (name, repl_i))
             break
+
         pic_name = '%d-%d' % (i, j)
         # read
         if 32 in level_downsamples:
@@ -307,7 +311,8 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
             img = img[:, :, :3]
             img_BN, H, E = normalizeStaining(img)
             img_BN = img
-            # matplotlib.image.imsave(save_dir+'/'+name_i+'/'+pic_name+'.png', img)
+            if evaluate:
+                matplotlib.image.imsave(save_dir+'/'+name_i+'/'+pic_name+'.png', img)
             features = features_extraction(img_BN, feature_extractor)
             name_list.append((i,j))
             if feature_vec is None:
@@ -317,14 +322,18 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
             idx+=1
             count += 1
         except:
-            # print('item %s is discarded for %s' % (pic_name, name))
-            # matplotlib.image.imsave(save_dir+'/'+name_i+'/discarded/'+pic_name+'.png', img)
+            # 
+            if evaluate:
+                print('item %s is discarded for %s' % (pic_name, name))
+                matplotlib.image.imsave(save_dir+'/'+name_i+'/discarded/'+pic_name+'.png', img)
             idx+=1
             continue
-        
-    slide.close()
-    del name_list
-    del feature_vec
+    if evaluate:
+        return mask_ij, low_resolution_img, feature_vec, name_list
+    else:
+        slide.close()
+        del name_list
+        del feature_vec
 
 
 def test():

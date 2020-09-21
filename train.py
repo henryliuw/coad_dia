@@ -20,66 +20,9 @@ def main():
     parser.add_argument("--batch_size", default=100, type=int, help="batch size")
     args = parser.parse_args()
 
-    image_split = args.image_split
     gpu = True
-    X = None
-    Y = None
-    X_cached_file = os.path.join(args.data_dir, 'X_%d.npy' % args.sample_n)
-    Y_cached_file = os.path.join(args.data_dir, 'Y_%d.npy' % args.sample_n)
-    df_cached_file = os.path.join(args.data_dir, 'df.csv')
-    if os.path.exists(X_cached_file) and os.path.exists(Y_cached_file):
-        print('loading cached data')
-        with open(X_cached_file,'rb') as file:
-            X = np.load(file)
-        with open(Y_cached_file,'rb') as file:
-            Y = np.load(file)
-        df_new = pd.read_csv(df_cached_file)
-    else:
-        df_new = None
-        print('reading data from preprocessed file')
-        csv_file = 'data/useful_subset.csv'
-        useful_subset = pd.read_csv(csv_file)
-        useful_subset['OS.time'].fillna(useful_subset['OS.time'].mean(), inplace=True)
-        size = len(useful_subset)
-        for i in range(1, size):
-            for j in range(args.repl_n):
-                if args.repl_n == 0:
-                    X_this = np.loadtxt(args.data_dir+'/'+str(i)+'_features.txt')
-                else:
-                    X_this_file = args.data_dir+'/'+str(i)+'_'+str(j)+'_features.txt'
-                    if os.path.exists(X_this_file):
-                        X_this = np.loadtxt(X_this_file)
-                    else:
-                        continue
-                Y_this = useful_subset.loc[i, 'outcome'] == 'good'
-                if len(X_this)==args.sample_n:
-                    if X is None:
-                        X = X_this.reshape(1, args.sample_n, 2048)
-                    else:
-                        X = np.r_[X, X_this.reshape(1, args.sample_n, 2048)]
-                    if Y is None:
-                        Y = Y_this
-                    else:
-                        Y = np.r_[Y, Y_this]
-                    image_file = args.data_dir+'/'+str(i)+'_'+str(j)+'_name.pkl'
-                    if df_new is None:
-                        df_new = pd.DataFrame({"y": Y_this, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file}, index=[0])
-                    else:
-                        df_new = df_new.append({"y": Y_this, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file}, ignore_index=True)
-                print("\r", "reading data input  %d/%d" % (i, size) , end='', flush=True)
-        
-        X = X.transpose((0, 2, 1))
-        try:
-            with open(X_cached_file,'wb') as file:
-                np.save(file, X)
-            with open(Y_cached_file,'wb') as file:
-                np.save(file, Y)
-            df_new.to_csv(df_cached_file)
-        except Exception as e:
-            print(e)
-
     # 5-folds cross validation
-    dataloader = CVDataLoader(X, Y, df_new, args.repl_n, gpu, image_split)
+    dataloader = CVDataLoader(args, gpu)
 
     n_epoch = 800
     lr = 0.0005

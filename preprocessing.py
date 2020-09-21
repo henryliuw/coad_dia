@@ -162,6 +162,18 @@ def read_image(slide, slide_count):
             gc.collect()
             yield img_resized, i
 
+def data_augmentation_transform(img):
+    vertical_flip = random.choice([0,1])
+    horizontal_flip= random.choice([0, 1])
+    rotate_seed = random.choice([1,2,3,4])
+
+    if vertical_flip:
+        img = np.flipud(img)
+    if horizontal_flip:
+        img = np.fliplr(img)
+    img = np.rot90(img, rotate_seed)    
+    return img
+
 def preprocessing(image_path, save_dir, name, threshold_ratio=0.3):
     # reading, thresholding 
     slide = openslide.OpenSlide(os.path.join(image_path))
@@ -206,7 +218,6 @@ def preprocessing(image_path, save_dir, name, threshold_ratio=0.3):
                         try:
                             pic_name = '%d-%d' % (i, j + slide_idx * 5)
                             img_BN, H, E = normalizeStaining(grid_ij)
-                            img_BN = grid_ij
                             matplotlib.image.imsave(save_dir+'/'+name+'/'+pic_name+'.png', img_BN)
                             features = features_extraction(img_BN, feature_extractor)
                             name_list.append(pic_name)
@@ -310,7 +321,7 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
         try:
             img = img[:, :, :3]
             img_BN, H, E = normalizeStaining(img)
-            img_BN = img
+            img_BN = data_augmentation_transform(img_BN)
             if evaluate:
                 matplotlib.image.imsave(save_dir+'/'+name_i+'/'+pic_name+'.png', img)
             features = features_extraction(img_BN, feature_extractor)

@@ -117,8 +117,6 @@ class CVDataLoader():
         self.image_split = args.image_split
 
     def _init_fold(self, X, Y, df, repl_n, gpu=True, image_split=True):
-
-
         if image_split:
             # train test will not have overlapping datapoints from a same image
             img_idx = df['sample_id'].unique()
@@ -183,8 +181,6 @@ class CVDataLoader():
                 train_Y_batch = train_Y_batch.cuda()
             return train_X_batch, train_Y_batch, train_df_batch
 
-    def a
-    
 def accuracy(result, target): 
     if result.is_cuda:
         result = result.cpu()

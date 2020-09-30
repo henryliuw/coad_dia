@@ -119,7 +119,7 @@ class CVDataLoader():
         self._init_fold()
         self.batch_size = args.batch_size
 
-    def _init_fold(self, X, Y, df, repl_n, gpu=True):
+    def _init_fold(self):
         if self.image_split:
             # train test will not have overlapping datapoints from a same image
             img_idx = self.df['sample_id'].unique()

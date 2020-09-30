@@ -77,8 +77,8 @@ class CAMdataloader():
         assert 1000 % batch_size == 0, "batch size undivisable by 1000 is unsupported now :("
         self.batch_size = batch_size
         self.test_idx = random.sample(range(100), 5)
-        self.X_test = torch.tensor(np.r_[[np.load('data/cam/X_1000_%d.npy' % i) for i in self.test_idx]], dtype=torch.float).cuda()
-        self.Y_test = torch.tensor(np.r_[[np.load('data/cam/Y_1000_%d.npy' % i) for i in self.test_idx]], dtype=torch.float).cuda()
+        self.X_test = torch.tensor(np.concatenate([np.load('data/cam/X_1000_%d.npy' % i) for i in self.test_idx]]), dtype=torch.float).cuda()
+        self.Y_test = torch.tensor(np.concatenate([np.load('data/cam/Y_1000_%d.npy' % i) for i in self.test_idx]]), dtype=torch.float).cuda()
         
     def __iter__(self):
         self.i_1000 = 0

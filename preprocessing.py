@@ -13,6 +13,11 @@ import gc
 import time
 import pandas as pd
 import random
+from resnet_fcn import ResNet18
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+import warnings
+warnings.filterwarnings('ignore')  # possibly harmful code
 
 def Otsu_threshold(img, verbose=False):
     ''' 
@@ -239,7 +244,8 @@ def preprocessing(image_path, save_dir, name, threshold_ratio=0.3):
     slide.close()
     with open(os.path.join(save_dir,name+'_name.pkl'),'wb') as file:
         pickle.dump(name_list, file)
-    np.savetxt(os.path.join(save_dir,name+'_features.txt'),feature_vec)
+    with open(os.path.join(save_dir,name+'_features.npy'),'wb') as file:
+        np.save(file, feature_vec)
     del name_list
     del feature_vec
 
@@ -265,9 +271,14 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
     print(len(tile_list))
     #return
     random.shuffle(tile_list)
-    resnet50_model = torchvision.models.resnet50(pretrained=True)
-    resnet50_model.eval()
-    feature_extractor = torch.nn.Sequential(*list(resnet50_model.children())[:-1])
+    #resnet50_model = torchvision.models.resnet50(pretrained=True)
+    #resnet50_model.eval()
+    #feature_extractor = torch.nn.Sequential(*list(resnet50_model.children())[:-1])
+    model = ResNet18()
+    model.load_state_dict(torch.load('data/Resnet34_fcn_best.pkl'))
+    model = model.eval()
+    feature_extractor = model.forward_feature
+
     level_downsamples = sorted([round(i) for i in slide.level_downsamples], reverse=True)
     feature_vec = None
     name_list = []
@@ -284,11 +295,11 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
 
     print('sampling %d tiles from image %s' % (sample_size, name))
     while 1:
-        # success exit branch
+        # successful exit branch
         if count == sample_size or idx == len(tile_list):   
             with open(os.path.join(save_dir,name_i+'_name.pkl'),'wb') as file:
                 pickle.dump(name_list, file)
-            np.savetxt(os.path.join(save_dir, name_i + '_features.txt'), feature_vec)
+            np.save(os.path.join(save_dir, name_i + '_features.npy'), feature_vec)
             feature_vec = None
             name_list = []
             count = 0

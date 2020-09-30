@@ -11,10 +11,10 @@ import warnings
 warnings.filterwarnings('ignore') # possibly harmful code
 
 class Predictor(nn.Module):
-    def __init__(self, evidence_size=5, layers=[200, 100, 1]):
+    def __init__(self, evidence_size=5, layers=[200, 100, 1], feature_size=2048):
         # tile scoring
         super().__init__()
-        self.conv1d_layer = torch.nn.Conv1d(2048, 1, 1)
+        self.conv1d_layer = torch.nn.Conv1d(feature_size, 1, 1)
         self.evidence_size=evidence_size #R
         linear_layer_list = []
         for i in range(len(layers)):
@@ -55,7 +55,7 @@ def weight_init(m):
 
 class CVDataLoader():
     ''' a 5-folds cross validation dataloader, with '''
-    def __init__(self, args, gpu):
+    def __init__(self, args, gpu, feature_size=2048):
         X_cached_file = os.path.join(args.data_dir, 'X_%d.npy' % args.sample_n)
         Y_cached_file = os.path.join(args.data_dir, 'Y_%d.npy' % args.sample_n)
         df_cached_file = os.path.join(args.data_dir, 'df.csv')
@@ -67,6 +67,7 @@ class CVDataLoader():
                 Y = np.load(file)
             df_new = pd.read_csv(df_cached_file)
         else:
+            X, Y = None, None
             df_new = None
             print('reading data from preprocessed file')
             csv_file = 'data/useful_subset.csv'
@@ -76,19 +77,19 @@ class CVDataLoader():
             for i in range(1, size):
                 for j in range(args.repl_n):
                     if args.repl_n == 0:
-                        X_this = np.loadtxt(args.data_dir+'/'+str(i)+'_features.txt')
+                        X_this = np.load(args.data_dir+'/'+str(i)+'_features.txt')
                     else:
-                        X_this_file = args.data_dir+'/'+str(i)+'_'+str(j)+'_features.txt'
+                        X_this_file = args.data_dir+'/'+str(i)+'_'+str(j)+'_features.npy'
                         if os.path.exists(X_this_file):
-                            X_this = np.loadtxt(X_this_file)
+                            X_this = np.load(X_this_file, allow_pickle=True)
                         else:
                             continue
                     Y_this = useful_subset.loc[i, 'outcome'] == 'good'
                     if len(X_this)==args.sample_n:
                         if X is None:
-                            X = X_this.reshape(1, args.sample_n, 2048)
+                            X = X_this.reshape(1, args.sample_n, feature_size)
                         else:
-                            X = np.r_[X, X_this.reshape(1, args.sample_n, 2048)]
+                            X = np.r_[X, X_this.reshape(1, args.sample_n, feature_size)]
                         if Y is None:
                             Y = Y_this
                         else:
@@ -115,19 +116,20 @@ class CVDataLoader():
         self.df = df_new
         self.repl_n = args.repl_n
         self.image_split = args.image_split
+        self._init_fold()
+        self.batch_size = args.batch_size
 
-    def _init_fold(self, X, Y, df, repl_n, gpu=True, image_split=True):
-
-
-        if image_split:
+    def _init_fold(self):
+        if self.image_split:
             # train test will not have overlapping datapoints from a same image
-            img_idx = df['sample_id'].unique()
+            img_idx = self.df['sample_id'].unique()
             np.random.shuffle(img_idx)
             id1, id2, id3, id4 = int(0.2 * len(img_idx)), int(0.4 * len(img_idx)), int(0.6 * len(img_idx)), int(0.8 * len(img_idx))
             self.perm_idx = np.array((img_idx[:id1], img_idx[id1:id2], img_idx[id2:id3], img_idx[id3:id4], img_idx[id4:]))
         else:
-            perm = np.random.permutation(len(Y))
-            id1, id2, id3, id4 = int(0.2 * len(Y)), int(0.4 * len(Y)), int(0.6 * len(Y)), int(0.8 * len(Y))
+            length_Y = len(self.Y)
+            perm = np.random.permutation(length_Y)
+            id1, id2, id3, id4 = int(0.2 * length_Y), int(0.4 * length_Y), int(0.6 * length_Y), int(0.8 * length_Y)
             self.perm_idx = np.array((perm[:id1], perm[id1:id2], perm[id2:id3], perm[id3:id4], perm[id4:]))
     
     def set_fold(self, i):
@@ -140,8 +142,6 @@ class CVDataLoader():
             self.train_idx = np.concatenate(self.perm_idx[train_idx_slice])
             self.test_idx = self.perm_idx[i]
 
-        self.idx = [int(len(self.train_idx) * i / self.repl_n) for i in range(self.repl_n)] + [len(self.train_idx)] # for batch
-        self.batch_i = 0
         self.X_train = self.X[self.train_idx]
         self.Y_train = self.Y[self.train_idx]
         if self.image_split:
@@ -155,23 +155,27 @@ class CVDataLoader():
         self.Y_test = self.Y[self.test_idx]
 
         if self.gpu:
-            self.X_test = self.X_test.cuda()
-            self.Y_test = self.Y_test.cuda()
+            self.X_test = self.X_test.to(gpu)
+            self.Y_test = self.Y_test.to(gpu)
 
     def get_test(self):
         return self.X_test, self.Y_test, self.df_test
     
     def get_train(self):
         if self.gpu:
-            return self.X_train.cuda(), self.Y_train.cuda(), self.df_train
+            return self.X_train.to(gpu), self.Y_train.to(gpu), self.df_train
         else:
             return self.X_train, self.Y_train, self.df_train
 
     def __iter__(self):
+        self.batch_i = 0
+        batch_len = len(self.X_train) // self.batch_size
+        self.idx = [i*self.batch_size for i in range(batch_len)] + [batch_len*self.batch_size, len(self.X_train)] # for batch
+        self.batch_len = batch_len
         return self
 
     def __next__(self):
-        if self.batch_i == self.repl_n:
+        if self.batch_i == self.batch_len+1:
             raise StopIteration
         else:
             train_X_batch = self.X_train[self.idx[self.batch_i]:self.idx[self.batch_i + 1]]
@@ -179,12 +183,10 @@ class CVDataLoader():
             train_df_batch = self.df_train[self.idx[self.batch_i]:self.idx[self.batch_i + 1]]
             self.batch_i += 1
             if self.gpu:
-                train_X_batch = train_X_batch.cuda()
-                train_Y_batch = train_Y_batch.cuda()
+                train_X_batch = train_X_batch.to(gpu)
+                train_Y_batch = train_Y_batch.to(gpu)
             return train_X_batch, train_Y_batch, train_df_batch
 
-    def a
-    
 def accuracy(result, target): 
     if result.is_cuda:
         result = result.cpu()
@@ -196,7 +198,7 @@ def auc(result, target):
         result = result.cpu()
         target = target.cpu()
     return roc_auc_score(target.numpy(), result.detach().numpy())
-
+ 
 def c_index(result, df):
     if result.is_cuda:
         result = result.cpu()

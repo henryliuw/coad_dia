@@ -8,6 +8,8 @@ import pickle
 from module import Predictor, accuracy, auc, c_index, CVDataLoader, weight_init
 from matplotlib import pyplot as plt
 
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
 def main():
     # reading in 
     import argparse
@@ -20,9 +22,10 @@ def main():
     parser.add_argument("--batch_size", default=100, type=int, help="batch size")
     args = parser.parse_args()
 
-    gpu = True
+    feature_size = 25088
+    gpu = "cuda:1"
     # 5-folds cross validation
-    dataloader = CVDataLoader(args, gpu)
+    dataloader = CVDataLoader(args, gpu, feature_size)
 
     n_epoch = 800
     lr = 0.0005
@@ -47,33 +50,36 @@ def main():
             acc_fold = None
             early_stop_count = 0
             
-            model = Predictor(evidence_size=args.evidence_n, layers=[100, 50, 1])
+            model = Predictor(evidence_size=args.evidence_n, layers=[100, 50, 1], feature_size=feature_size)
             # model.apply(weight_init)
             if gpu:
-                model = model.cuda()
+                model = model.to(gpu)
             optimizer = torch.optim.RMSprop(model.parameters(), lr=lr, weight_decay=weight_decay)
             
             
             dataloader.set_fold(i)
             X_test, Y_test, df_test = dataloader.get_test()
-            X_train, Y_train, df_train = dataloader.get_train()
+            # X_train, Y_train, df_train = dataloader.get_train()
             print('starting fold %d' % i)
             
             for epoch in range(n_epoch):
-                result = model(X_train)
-                loss = nn.functional.binary_cross_entropy(result, Y_train) + nn.functional.mse_loss(result, Y_train)
+                #result = model(X_train)
+                #loss = nn.functional.binary_cross_entropy(result, Y_train) + nn.functional.mse_loss(result, Y_train)
                 # loss = nn.functional.mse_loss(result, Y_train)
-                loss.backward()
-                optimizer.step()
-                optimizer.zero_grad()
+                #loss.backward()
+                #optimizer.step()
+                #optimizer.zero_grad()
                 
                 # batch input
-                #for X_train_batch, Y_train_batch, df_train_batch in dataloader:
-                #    result = model(X_train_batch)
-                #    loss = nn.functional.binary_cross_entropy(result, Y_train_batch)
-                #    loss.backward()
-                #    optimizer.step()
-                #    optimizer.zero_grad()
+                for X_train_batch, Y_train_batch, df_train_batch in dataloader:
+                    # print(X_train_batch.shape)
+                    result = model(X_train_batch)
+                    loss = nn.functional.binary_cross_entropy(result, Y_train_batch)
+                    loss.backward()
+                    optimizer.step()
+                    optimizer.zero_grad()
+                
+                X_train, Y_train, df_train = X_train_batch, Y_train_batch, df_train_batch
 
                 if epoch % 25 == 0:
                     result_test = model(X_test)

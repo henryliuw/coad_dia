@@ -1,1 +1,1 @@
-# Prediction Survival for Colorectal Cancer
+# Survival Prediction for Colorectal Cancer

@@ -17,12 +17,17 @@ gpu = "cuda:0"
 # total std array([50.20244419, 58.14826902, 43.68690714])
 
 def main():
+
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--name", default="", help='save file name')
+    args = parser.parse_args()
     # training 
     batch_size = 100
-    epoch_n = 200
-    lr = 0.001
-    weight_decay = 0.00002
-    logging.basicConfig(filename='data/cam/log',level=logging.INFO)
+    epoch_n = 50
+    lr = 0.0005
+    weight_decay = 0.00001
+    logging.basicConfig(filename='data/cam/log_' + args.name ,level=logging.INFO)
 
     msg = "%s loading data" % time.strftime('%m.%d %H:%M:%S')
     print(msg)
@@ -68,12 +73,18 @@ def main():
                 logging.info(msg)
                 model.train()
     
-    model.save()
+    model.save(args.name)
 
 class MyResNet(torchvision.models.ResNet):
     def __init__(self, *args, **kwargs):
         super().__init__(num_classes=1, *args, **kwargs)
-    
+        feature_size=32
+        self.fc = torch.nn.Linear(512, feature_size)
+        self.fc2 = torch.nn.Linear(feature_size, 1)
+    def forward(self, x):
+        x = self.get_feature(x)
+        x = self.fc2(x)
+        return x
     def get_feature(self, x):
         # See note [TorchScript super()]
         x = self.conv1(x)
@@ -88,13 +99,14 @@ class MyResNet(torchvision.models.ResNet):
 
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
+        x = self.fc(x)
         return x
 
     def save(self, name=""):
         torch.save(self.state_dict(), 'data/cam/model_%s' % name)
 
     def load(self, name=""):
-        self.load_state_dict(torch.load('data/cam/model_%s') % name)
+        self.load_state_dict(torch.load('data/cam/model_%s' % name))
 
 class CAMdataloader():
     def __init__(self, batch_size=100):

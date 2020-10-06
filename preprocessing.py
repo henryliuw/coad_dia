@@ -13,7 +13,7 @@ import gc
 import time
 import pandas as pd
 import random
-from resnet_fcn import ResNet18
+from extractor import MyResNet
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import warnings
@@ -145,7 +145,8 @@ def features_extraction(img, feature_extractor):
         transforms.RandomCrop(224), 
         transforms.ToTensor(), 
         #lambda x: x / 255,
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)) 
+        # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)) 
+        transforms.Normalize(mean=(0.71029204, 0.54590117, 0.64897074), std=(0.19687233, 0.22803243, 0.1713212))
     ])
     img_transformed = transform_train(img).reshape(1,3,224,224)
     features = feature_extractor(img_transformed).view(1, -1).detach().numpy()
@@ -179,76 +180,6 @@ def data_augmentation_transform(img):
     img = np.rot90(img, rotate_seed)    
     return img
 
-def preprocessing(image_path, save_dir, name, threshold_ratio=0.3):
-    # reading, thresholding 
-    slide = openslide.OpenSlide(os.path.join(image_path))
-    # extract features
-    resnet50_model = torchvision.models.resnet50(pretrained=True)
-    resnet50_model.eval()
-    feature_extractor = torch.nn.Sequential(*list(resnet50_model.children())[:-1])
-    feature_vec = None
-    name_list = []
-    slide_count = 3
-    gen = read_image(slide, slide_count)
-    
-    #get Otsu mask on low resolution image
-    Otsu_mask = Otsu_threshold(np.array(
-        slide.read_region((0,0),len(slide.level_dimensions)-1, slide.level_dimensions[-1]))[:,:,:3], False)
-    
-    while 1:
-        try:
-            img, slide_idx = next(gen)
-            row_n = img.shape[0] // 224
-            col_n = img.shape[1] // 224
-            if not os.path.isdir(save_dir):
-                os.mkdir(save_dir)
-            if not os.path.isdir(os.path.join(save_dir, name)):
-                os.mkdir(os.path.join(save_dir, name))
-            if not os.path.isdir(os.path.join(save_dir, name,'discarded')):
-                os.mkdir(os.path.join(save_dir, name,'discarded'))
-            gc.collect()
-            # matplotlib.image.imsave(save_dir+'/slide_'+str(slide_idx)+'.png', img)
-            
-
-            for i in range(row_n):
-                for j in range(col_n):
-                    mask_i = 7 * i # relative coordinate
-                    mask_j = 7 * (slide_count * slide_idx + j)
-                    mask_ij = Otsu_mask[mask_i:mask_i+7, mask_j:mask_j+7]
-                    ratio = mask_ij.sum() / 7 / 7
-                    # print(ratio)
-                    if ratio > threshold_ratio:
-                        grid_ij = img[224*i:224*(i+1),224*j:224*(j+1),:3]
-                        # plt.imshow(grid_ij)
-                        try:
-                            pic_name = '%d-%d' % (i, j + slide_idx * 5)
-                            img_BN, H, E = normalizeStaining(grid_ij)
-                            matplotlib.image.imsave(save_dir+'/'+name+'/'+pic_name+'.png', img_BN)
-                            features = features_extraction(img_BN, feature_extractor)
-                            name_list.append(pic_name)
-                            if feature_vec is None:
-                                feature_vec = features
-                            else:
-                                feature_vec = np.r_[feature_vec, features]
-
-                        except:
-                            print('item %s is discarded for %s' % (pic_name, name))
-                            matplotlib.image.imsave(save_dir+'/'+name+'/discarded/'+pic_name+'.png', grid_ij)
-                            pass
-
-            gc.collect()
-        except StopIteration:
-            break
-    
-
-    slide.close()
-    with open(os.path.join(save_dir,name+'_name.pkl'),'wb') as file:
-        pickle.dump(name_list, file)
-    with open(os.path.join(save_dir,name+'_features.npy'),'wb') as file:
-        np.save(file, feature_vec)
-    del name_list
-    del feature_vec
-
 def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ratio=0.3, evaluate=False):
 
     slide = openslide.OpenSlide(os.path.join(image_path))
@@ -270,14 +201,20 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
         sample_size = len(tile_list)
     print(len(tile_list))
     #return
+    
     random.shuffle(tile_list)
+    resnet34 = MyResNet(torchvision.models.resnet.BasicBlock, [3, 4, 6, 3])
+    resnet34.load()
+    resnet34.eval()
+    feature_extractor = resnet34.get_feature
+    
     #resnet50_model = torchvision.models.resnet50(pretrained=True)
     #resnet50_model.eval()
     #feature_extractor = torch.nn.Sequential(*list(resnet50_model.children())[:-1])
-    model = ResNet18()
-    model.load_state_dict(torch.load('data/Resnet34_fcn_best.pkl'))
-    model = model.eval()
-    feature_extractor = model.forward_feature
+    #model = ResNet18()
+    #model.load_state_dict(torch.load('data/Resnet34_fcn_best.pkl'))
+    #model = model.eval()
+    #feature_extractor = model.forward_feature
 
     level_downsamples = sorted([round(i) for i in slide.level_downsamples], reverse=True)
     feature_vec = None
@@ -371,7 +308,7 @@ def main():
     parser.add_argument("--input_dir", default='/home/DiskB/tcga_coad_dia'  ,help='determine the base dir of the dataset document')
     parser.add_argument("--output_dir", default='preprocessed_data' ,help='determine the output dir of preprocessed data')
     parser.add_argument("--start_image", default=0 , type=int, help='starting image index of preprocessing (for continuing unexpected break)')
-    parser.add_argument("--sample_n", default=0, type=int, help='sample size of each image')
+    parser.add_argument("--sample_n", default=1000, type=int, help='sample size of each image')
     parser.add_argument("--repl_n", default=0, type=int, help='replication of each image')
     args = parser.parse_args()
     useful_subset = pd.read_csv('data/useful_subset.csv')
@@ -382,10 +319,7 @@ def main():
         image_path = os.path.join(args.input_dir, useful_subset.loc[i, 'id'], useful_subset.loc[i, 'File me'])
         name = str(i)
         print('%s\tstarting image %d' % (time.strftime('%Y.%m.%d.%H:%M:%S',time.localtime(time.time())), i))
-        if args.sample_n == 0:
-            preprocessing(image_path, args.output_dir, name)
-        else:
-            read_samples(image_path,  args.output_dir, name, sample_size=args.sample_n, repl_n=args.repl_n)
+        read_samples(image_path,  args.output_dir, name, sample_size=args.sample_n, repl_n=args.repl_n)
 
 if __name__ == "__main__":
     main()

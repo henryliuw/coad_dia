@@ -1,11 +1,9 @@
-import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
 import time
 import os
-import pickle
-from module import Predictor, accuracy, auc, c_index, CVDataLoader, weight_init
+from module import Predictor, accuracy, auc, c_index, CVDataLoader
 from matplotlib import pyplot as plt
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
@@ -20,17 +18,17 @@ def main():
     parser.add_argument("--repl_n", default=3, type=int, help='how many resampled replications')
     parser.add_argument("--image_split", action='store_true', help='if use image_split')
     parser.add_argument("--batch_size", default=100, type=int, help="batch size")
+    parser.add_argument("--stage_two", action='store_true', help='if only use stage two patients')
     args = parser.parse_args()
 
-    feature_size = 25088
-    gpu = "cuda:1"
+    feature_size = 2048
+    gpu = "cuda:0"
     # 5-folds cross validation
     dataloader = CVDataLoader(args, gpu, feature_size)
 
     n_epoch = 800
-    lr = 0.0005
-    weight_decay = 0.03
-    overfit = 0
+    lr = 0.00005
+    weight_decay = 0.00001
     manytimes_n = 2
 
     if not os.path.isdir('figure'):
@@ -50,12 +48,12 @@ def main():
             acc_fold = None
             early_stop_count = 0
             
-            model = Predictor(evidence_size=args.evidence_n, layers=[100, 50, 1], feature_size=feature_size)
+            model = Predictor(evidence_size=args.evidence_n, layers=(200, 100, 50, 1), feature_size=feature_size)
             # model.apply(weight_init)
             if gpu:
                 model = model.to(gpu)
-            optimizer = torch.optim.RMSprop(model.parameters(), lr=lr, weight_decay=weight_decay)
-            
+            # optimizer = torch.optim.RMSprop(model.parameters(), lr=lr, weight_decay=weight_decay)
+            optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
             
             dataloader.set_fold(i)
             X_test, Y_test, df_test = dataloader.get_test()
@@ -81,7 +79,7 @@ def main():
                 
                 X_train, Y_train, df_train = X_train_batch, Y_train_batch, df_train_batch
 
-                if epoch % 25 == 0:
+                if epoch % 10 == 0:
                     result_test = model(X_test)
                     loss_test = nn.functional.binary_cross_entropy(result_test, Y_test) + nn.functional.mse_loss(result_test, Y_test)
                     #loss_test = nn.functional.mse_loss(result_test, Y_test)
@@ -112,7 +110,6 @@ def main():
                         break
                     if epoch > 500:
                         optimizer = torch.optim.RMSprop(model.parameters(), lr * 0.8, weight_decay=weight_decay)
-                        overfit = 1
 
             train_history = np.array(train_history)
             test_history = np.array(test_history)

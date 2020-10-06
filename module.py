@@ -2,7 +2,6 @@ import torch.nn as nn
 import torch
 import numpy as np
 from sklearn.metrics import roc_auc_score
-from lifelines import CoxPHFitter
 import lifelines
 import os
 import pandas as pd
@@ -11,7 +10,7 @@ import warnings
 warnings.filterwarnings('ignore') # possibly harmful code
 
 class Predictor(nn.Module):
-    def __init__(self, evidence_size=5, layers=[200, 100, 1], feature_size=2048):
+    def __init__(self, evidence_size=5, layers=(200, 100, 1), feature_size=2048):
         # tile scoring
         super().__init__()
         self.conv1d_layer = torch.nn.Conv1d(feature_size, 1, 1)
@@ -55,16 +54,14 @@ def weight_init(m):
 
 class CVDataLoader():
     ''' a 5-folds cross validation dataloader, with '''
-    def __init__(self, args, gpu, feature_size=2048):
+    def __init__(self, args, gpu, feature_size=2048, stage_two=False):
+        # reading in preprocessed data
         X_cached_file = os.path.join(args.data_dir, 'X_%d.npy' % args.sample_n)
-        Y_cached_file = os.path.join(args.data_dir, 'Y_%d.npy' % args.sample_n)
         df_cached_file = os.path.join(args.data_dir, 'df.csv')
-        if os.path.exists(X_cached_file) and os.path.exists(Y_cached_file):
+        if os.path.exists(X_cached_file) and os.path.exists(df_cached_file):
             print('loading cached data')
             with open(X_cached_file,'rb') as file:
                 X = np.load(file)
-            with open(Y_cached_file,'rb') as file:
-                Y = np.load(file)
             df_new = pd.read_csv(df_cached_file)
         else:
             X, Y = None, None
@@ -85,31 +82,37 @@ class CVDataLoader():
                         else:
                             continue
                     Y_this = useful_subset.loc[i, 'outcome'] == 'good'
+                    Y_this_stage_two = useful_subset.loc[i, 'outcome2'] == 'good'
+                    is_stage_two = useful_subset.loc[i, "stage"] == 'Stage II'
                     if len(X_this)==args.sample_n:
                         if X is None:
                             X = X_this.reshape(1, args.sample_n, feature_size)
                         else:
                             X = np.r_[X, X_this.reshape(1, args.sample_n, feature_size)]
-                        if Y is None:
-                            Y = Y_this
-                        else:
-                            Y = np.r_[Y, Y_this]
                         image_file = args.data_dir+'/'+str(i)+'_'+str(j)+'_name.pkl'
                         if df_new is None:
-                            df_new = pd.DataFrame({"y": Y_this, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file}, index=[0])
+                            df_new = pd.DataFrame({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file, 'stage_two':is_stage_two}, index=[0])
                         else:
-                            df_new = df_new.append({"y": Y_this, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file}, ignore_index=True)
-                    print("\r", "reading data input  %d/%d" % (i, size) , end='', flush=True)
+                            df_new = df_new.append({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file, 'stage_two':is_stage_two}, ignore_index=True)
+                    print("reading data input  %d/%d" % (i, size) , end='', flush=True)
             
+            # retrieve X, Y
+
+
             X = X.transpose((0, 2, 1))
             try:
                 with open(X_cached_file,'wb') as file:
                     np.save(file, X)
-                with open(Y_cached_file,'wb') as file:
-                    np.save(file, Y)
                 df_new.to_csv(df_cached_file)
             except Exception as e:
                 print(e)
+
+        if args.stage_two:
+            idx = df_new['stage_two'] == True
+            X = X[idx]
+            Y = df_new[idx]["y2"].values
+        else:
+            Y = df_new["y"].values
 
         self.gpu = gpu
         self.X, self.Y = torch.Tensor(X), torch.Tensor(Y)
@@ -118,6 +121,7 @@ class CVDataLoader():
         self.image_split = args.image_split
         self._init_fold()
         self.batch_size = args.batch_size
+        self.stage_two = args.stage_two
 
     def _init_fold(self):
         if self.image_split:
@@ -155,15 +159,15 @@ class CVDataLoader():
         self.Y_test = self.Y[self.test_idx]
 
         if self.gpu:
-            self.X_test = self.X_test.to(gpu)
-            self.Y_test = self.Y_test.to(gpu)
+            self.X_test = self.X_test.to(self.gpu)
+            self.Y_test = self.Y_test.to(self.gpu)
 
     def get_test(self):
         return self.X_test, self.Y_test, self.df_test
     
     def get_train(self):
         if self.gpu:
-            return self.X_train.to(gpu), self.Y_train.to(gpu), self.df_train
+            return self.X_train.to(self.gpu), self.Y_train.to(self.gpu), self.df_train
         else:
             return self.X_train, self.Y_train, self.df_train
 
@@ -183,8 +187,8 @@ class CVDataLoader():
             train_df_batch = self.df_train[self.idx[self.batch_i]:self.idx[self.batch_i + 1]]
             self.batch_i += 1
             if self.gpu:
-                train_X_batch = train_X_batch.to(gpu)
-                train_Y_batch = train_Y_batch.to(gpu)
+                train_X_batch = train_X_batch.to(self.gpu)
+                train_Y_batch = train_Y_batch.to(self.gpu)
             return train_X_batch, train_Y_batch, train_df_batch
 
 def accuracy(result, target): 

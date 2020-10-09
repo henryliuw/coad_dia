@@ -1,8 +1,6 @@
 import torch.nn as nn
 import torch
 import numpy as np
-from sklearn.metrics import roc_auc_score
-import lifelines
 import os
 import pandas as pd
 import warnings
@@ -32,6 +30,7 @@ class Predictor(nn.Module):
         top_items, _ = torch.topk(tile_descriptor, self.evidence_size, dim=2) 
         bottom_items, _ = torch.topk(tile_descriptor, self.evidence_size, dim=2, largest=False)
         evidences = torch.cat((top_items, bottom_items), dim=2).view(-1, self.evidence_size * 2)
+        # evidences = top_items.view(-1, self.evidence_size)
         # items [batch, 2 * evidence_size]
         logits = self.linear_layers(evidences) 
         results = self.sigmoid_f(logits).view(-1)
@@ -94,7 +93,7 @@ class CVDataLoader():
                             df_new = pd.DataFrame({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file, 'stage_two':is_stage_two}, index=[0])
                         else:
                             df_new = df_new.append({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file, 'stage_two':is_stage_two}, ignore_index=True)
-                    print("reading data input  %d/%d" % (i, size) , end='', flush=True)
+                    print("\r","reading data input  %d/%d" % (i, size) , end='', flush=True)
             
             # retrieve X, Y
 
@@ -111,6 +110,7 @@ class CVDataLoader():
             idx = df_new['stage_two'] == True
             X = X[idx]
             Y = df_new[idx]["y2"].values
+            df_new = df_new[idx]
         else:
             Y = df_new["y"].values
 
@@ -174,8 +174,12 @@ class CVDataLoader():
     def __iter__(self):
         self.batch_i = 0
         batch_len = len(self.X_train) // self.batch_size
-        self.idx = [i*self.batch_size for i in range(batch_len)] + [batch_len*self.batch_size, len(self.X_train)] # for batch
-        self.batch_len = batch_len
+        if batch_len*self.batch_size == len(self.X_train):
+            self.idx = [i*self.batch_size for i in range(batch_len)] + [batch_len*self.batch_size] # divisable 
+            self.batch_len = batch_len - 1
+        else:
+            self.idx = [i*self.batch_size for i in range(batch_len)] + [batch_len*self.batch_size, len(self.X_train)] # not divisable
+            self.batch_len = batch_len
         return self
 
     def __next__(self):
@@ -190,25 +194,3 @@ class CVDataLoader():
                 train_X_batch = train_X_batch.to(self.gpu)
                 train_Y_batch = train_Y_batch.to(self.gpu)
             return train_X_batch, train_Y_batch, train_df_batch
-
-def accuracy(result, target): 
-    if result.is_cuda:
-        result = result.cpu()
-        target = target.cpu()
-    return torch.eq(result > 0.5, target.type(torch.BoolTensor)).sum().numpy() / len(target)
-
-def auc(result, target):
-    if result.is_cuda:
-        result = result.cpu()
-        target = target.cpu()
-    return roc_auc_score(target.numpy(), result.detach().numpy())
- 
-def c_index(result, df):
-    if result.is_cuda:
-        result = result.cpu()
-    #try:
-    #    cph = CoxPHFitter().fit(df, duration_col="time", event_col="y", formula="predict")
-    #except:
-    #    return -1
-    #return cph.concordance_index_
-    return lifelines.utils.concordance_index(df['time'], result.detach().numpy(), ~df['y'])

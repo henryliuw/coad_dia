@@ -204,7 +204,7 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
     
     random.shuffle(tile_list)
     resnet34 = MyResNet(torchvision.models.resnet.BasicBlock, [3, 4, 6, 3])
-    resnet34.load()
+    resnet34.load("f32")
     resnet34.eval()
     feature_extractor = resnet34.get_feature
     
@@ -310,6 +310,7 @@ def main():
     parser.add_argument("--start_image", default=0 , type=int, help='starting image index of preprocessing (for continuing unexpected break)')
     parser.add_argument("--sample_n", default=1000, type=int, help='sample size of each image')
     parser.add_argument("--repl_n", default=0, type=int, help='replication of each image')
+    parser.add_argument("--name", default="" help='name to load')
     args = parser.parse_args()
     useful_subset = pd.read_csv('data/useful_subset.csv')
     # preprocessing

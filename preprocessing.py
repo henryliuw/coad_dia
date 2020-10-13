@@ -180,9 +180,13 @@ def data_augmentation_transform(img):
     img = np.rot90(img, rotate_seed)    
     return img
 
-def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ratio=0.3, evaluate=False):
-
-    slide = openslide.OpenSlide(os.path.join(image_path))
+def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ratio=0.3, evaluate=False, changhai=False, extractor=""):
+    slide = openslide.OpenSlide(image_path)
+    
+    level_downsamples = sorted([round(i) for i in slide.level_downsamples], reverse=True)
+    if 32 not in level_downsamples and 64 not in level_downsamples:
+        print('File %s does not have downsample levels larger than or equal to 32' % image_path)
+        return None
 
     low_resolution_img = np.array(slide.read_region((0,0), len(slide.level_dimensions)-1, slide.level_dimensions[-1]))
     width, height = low_resolution_img.shape[0]//7, low_resolution_img.shape[1]//7
@@ -204,7 +208,7 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
     
     random.shuffle(tile_list)
     resnet34 = MyResNet(torchvision.models.resnet.BasicBlock, [3, 4, 6, 3])
-    resnet34.load("f32")
+    resnet34.load(extractor)
     resnet34.eval()
     feature_extractor = resnet34.get_feature
     
@@ -216,22 +220,24 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
     #model = model.eval()
     #feature_extractor = model.forward_feature
 
-    level_downsamples = sorted([round(i) for i in slide.level_downsamples], reverse=True)
     feature_vec = None
     name_list = []
     idx = 0
     count = 0
     repl_i = 0
+    if changhai:
+        save_dir = os.path.join(save_dir, 'changhai')
     name_i = name+'_'+str(repl_i)
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
-    if not os.path.isdir(os.path.join(save_dir, name_i)):
-        os.mkdir(os.path.join(save_dir, name_i))
-    if not os.path.isdir(os.path.join(save_dir, name_i,'discarded')):
-        os.mkdir(os.path.join(save_dir, name_i,'discarded'))
+    #if not os.path.isdir(os.path.join(save_dir, name_i)):
+    #    os.mkdir(os.path.join(save_dir, name_i))
+    #if not os.path.isdir(os.path.join(save_dir, name_i,'discarded')):
+    #    os.mkdir(os.path.join(save_dir, name_i,'discarded'))
 
     print('sampling %d tiles from image %s' % (sample_size, name))
     while 1:
+        # check for stop condition first
         # successful exit branch
         if count == sample_size or idx == len(tile_list):   
             with open(os.path.join(save_dir,name_i+'_name.pkl'),'wb') as file:
@@ -242,10 +248,10 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
             count = 0
             repl_i += 1
             name_i = name+'_'+str(repl_i)
-            if not os.path.isdir(os.path.join(save_dir, name_i)):
-                os.mkdir(os.path.join(save_dir, name_i))
-            if not os.path.isdir(os.path.join(save_dir, name_i,'discarded')):
-                os.mkdir(os.path.join(save_dir, name_i, 'discarded'))
+            #if not os.path.isdir(os.path.join(save_dir, name_i)):
+            #    os.mkdir(os.path.join(save_dir, name_i))
+            #if not os.path.isdir(os.path.join(save_dir, name_i,'discarded')):
+            #    os.mkdir(os.path.join(save_dir, name_i, 'discarded'))
             print('replica %d sampling succeed' % repl_i)
             if repl_i == repl_n:
                 break
@@ -310,18 +316,24 @@ def main():
     parser.add_argument("--start_image", default=0 , type=int, help='starting image index of preprocessing (for continuing unexpected break)')
     parser.add_argument("--sample_n", default=1000, type=int, help='sample size of each image')
     parser.add_argument("--repl_n", default=0, type=int, help='replication of each image')
-    parser.add_argument("--name", default="" help='name to load')
+    parser.add_argument("--extractor", default="", help='name to load extractor')
+    parser.add_argument("--changhai", action='store_true')
     args = parser.parse_args()
     useful_subset = pd.read_csv('data/useful_subset.csv')
     # preprocessing
-    for i in useful_subset.index:
-        if i < args.start_image:
-            continue
-        image_path = os.path.join(args.input_dir, useful_subset.loc[i, 'id'], useful_subset.loc[i, 'File me'])
-        name = str(i)
-        print('%s\tstarting image %d' % (time.strftime('%Y.%m.%d.%H:%M:%S',time.localtime(time.time())), i))
-        read_samples(image_path,  args.output_dir, name, sample_size=args.sample_n, repl_n=args.repl_n)
-
+    if not args.changhai:
+        for i in useful_subset.index:
+            if i < args.start_image:
+                continue
+            image_path = os.path.join(args.input_dir, useful_subset.loc[i, 'id'], useful_subset.loc[i, 'File me'])
+            name = str(i)
+            print('%s\tstarting image %d' % (time.strftime('%Y.%m.%d.%H:%M:%S',time.localtime(time.time())), i))
+            read_samples(image_path,  args.output_dir, name, sample_size=args.sample_n, repl_n=args.repl_n, extractor=args.extractor)
+    else:
+        for i in sorted(os.listdir('/home/DiskB/tcga_coad_dia/changhai')):
+            image_path = os.path.join('/home/DiskB/tcga_coad_dia/changhai', i)
+            read_samples(image_path,  args.output_dir, i.split('.')[0], sample_size=args.sample_n, repl_n=args.repl_n, changhai=True, extractor=args.extractor)
+        
 if __name__ == "__main__":
     main()
     #test()

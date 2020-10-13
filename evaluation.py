@@ -30,11 +30,14 @@ def recall(result, target):
         target = target.cpu()
     return recall_score(target.numpy(), result.detach().numpy() > 0.5)
 
-def f1(result, target):
+def f1(result, target, negative = False):
     if result.is_cuda:
         result = result.cpu()
         target = target.cpu()
-    return f1_score(target.numpy(), result.detach().numpy() > 0.5)
+    if negative:
+        return f1_score(~target.numpy().astype('bool'), result.detach().numpy() < 0.5)
+    else:
+        return f1_score(target.numpy(), result.detach().numpy() > 0.5)
 
 def precision(result, target):
     if result.is_cuda:

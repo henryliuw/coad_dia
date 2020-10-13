@@ -5,7 +5,7 @@ import torch, torchvision
 import gc
 import time
 import random
-from module import accuracy, auc
+from evaluation import accuracy, auc
 import logging
 
 gpu = "cuda:0"

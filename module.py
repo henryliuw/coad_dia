@@ -39,11 +39,11 @@ class Predictor(nn.Module):
     def tile_scoring(self, image_features):
         return self.conv1d_layer(image_features)
 
-    def save(self, save_dir):
-        torch.save(self.state_dict(), save_dir+'/model')
+    def save(self, save_file):
+        torch.save(self.state_dict(), save_file)
 
-    def load(self, save_dir):
-        self.load_state_dict(torch.load(save_dir+'/model'))
+    def load(self, save_file):
+        self.load_state_dict(torch.load(save_file))
 
 def weight_init(m):
     if isinstance(m, torch.nn.Conv1d) or isinstance(m, torch.nn.Linear):
@@ -95,9 +95,17 @@ class CVDataLoader():
                             df_new = df_new.append({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file, 'stage_two':is_stage_two}, ignore_index=True)
                     print("\r","reading data input  %d/%d" % (i, size) , end='', flush=True)
             
+            changhai_csv = pd.read_csv('data/changhai.csv')
+            X_changhai = []
+            for i in changhai_csv.index:
+                file_dir = os.path.join(args.data_dir, 'changhai' ,changhai_csv.loc[i, 'file'])
+                X_changhai.append(np.load(file_dir).reshape(1,2000,32))
+                y = changhai_csv.loc[i, 'y']
+                df_new = df_new.append({"y": y, "y2": y, "time": np.nan, 'sample_id': np.nan, 'image_file':np.nan, 'stage_two':True}, ignore_index=True)
+            X_changhai = np.concatenate(X_changhai)
+
             # retrieve X, Y
-
-
+            X = np.r_[X, X_changhai]
             X = X.transpose((0, 2, 1))
             try:
                 with open(X_cached_file,'wb') as file:
@@ -106,13 +114,25 @@ class CVDataLoader():
             except Exception as e:
                 print(e)
 
-        if args.stage_two:
-            idx = df_new['stage_two'] == True
-            X = X[idx]
-            Y = df_new[idx]["y2"].values
-            df_new = df_new[idx]
-        else:
-            Y = df_new["y"].values
+        if args.changhai:
+            if args.stage_two:
+                idx = df_new['stage_two'] == True
+                X = X[idx]
+                Y = df_new[idx]["y2"].values
+                df_new = df_new[idx]
+            else:
+                Y = df_new["y"].values
+        else: # only original data
+            part1_max_idx = df_new[np.isnan(df_new['time'])].index.min()
+            df_new = df_new[:part1_max_idx]
+            X = X[:part1_max_idx]
+            if args.stage_two:
+                idx = df_new['stage_two'] == True
+                X = X[idx]
+                Y = df_new[idx]["y2"].values
+                df_new = df_new[idx]
+            else:
+                Y = df_new["y"].values
 
         self.gpu = gpu
         self.X, self.Y = torch.Tensor(X), torch.Tensor(Y)
@@ -178,8 +198,8 @@ class CVDataLoader():
             self.idx = [i*self.batch_size for i in range(batch_len)] + [batch_len*self.batch_size] # divisable 
             self.batch_len = batch_len - 1
         else:
-            self.idx = [i*self.batch_size for i in range(batch_len)] + [batch_len*self.batch_size, len(self.X_train)] # not divisable
-            self.batch_len = batch_len
+            self.idx = [i*self.batch_size for i in range(batch_len)] + [len(self.X_train)] # not divisable
+            self.batch_len = batch_len - 1
         return self
 
     def __next__(self):

@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--image_split", action='store_true', help='if use image_split')
     parser.add_argument("--batch_size", default=50, type=int, help="batch size")
     parser.add_argument("--stage_two", action='store_true', help='if only use stage two patients')
+    parser.add_argument("--changhai", action='store_true', help='if use additional data')
     args = parser.parse_args()
 
     feature_size = 32
@@ -30,19 +31,23 @@ def main():
     n_epoch = 800
     lr = 0.0005
     if args.stage_two:
-        weight_decay = 0.007
+        weight_decay = 0.008
     else:
         weight_decay = 0.005
     manytimes_n = 8
 
     if not os.path.isdir('figure'):
         os.mkdir('figure')
+    if not os.path.isdir(os.path.join(args.data_dir, 'model')):
+        os.mkdir(os.path.join(args.data_dir, 'model'))
 
     acc_folds = []
     auc_folds = []
     c_index_folds = []
     f1_folds = []
+    f1_folds_pos = []
     total_round = 0
+    model_count = 0
 
     for _ in range(manytimes_n): # averaging
         for i in range(5):
@@ -90,24 +95,29 @@ def main():
                     #loss_test = nn.functional.mse_loss(result_test, Y_test)
                     acc_train, acc_test = accuracy(result, Y_train), accuracy(result_test, Y_test)
                     auc_train, auc_test = auc(result, Y_train),  auc(result_test, Y_test)
-                    c_index_train, c_index_test = c_index(result, df_train), c_index(result_test, df_test)
+                    if args.changhai:
+                        c_index_train, c_index_test = 0, 0
+                    else:
+                        c_index_train, c_index_test = c_index(result, df_train), c_index(result_test, df_test)
                     recall_train, recall_test = recall(result, Y_train),  recall(result_test, Y_test)
                     precision_train, precision_test = precision(result, Y_train),  precision(result_test, Y_test)
-                    f1_train, f1_test = f1(result, Y_train),  f1(result_test, Y_test)
+                    f1_train_pos, f1_test_pos = f1(result, Y_train),  f1(result_test, Y_test)
+                    f1_train, f1_test = f1(result, Y_train, negative = True),  f1(result_test, Y_test, negative = True)
                     train_history.append((epoch, loss, acc_train, auc_train, c_index_train))
                     test_history.append((epoch, loss_test, acc_test, auc_test, c_index_test))
                     if epoch % 40 == 0:
-                        print("%s epoch:%d loss:%.3f/%.3f acc:%.3f/%.3f auc:%.3f/%.3f c_index:%.3f/%.3f recall:%.3f/%.3f prec:%.3f/%.3f f1:%.3f/%.3f" % 
-                        (time.strftime('%m.%d %H:%M:%S', time.localtime(time.time())), epoch, loss,loss_test, acc_train,acc_test, auc_train,auc_test, c_index_train,c_index_test, recall_train, recall_test, precision_train, precision_test, f1_train, f1_test))
+                        print("%s epoch:%d loss:%.3f/%.3f acc:%.3f/%.3f auc:%.3f/%.3f c_index:%.3f/%.3f recall:%.3f/%.3f prec:%.3f/%.3f f1:%.3f/%.3f f1(neg):%.3f/%.3f" % 
+                        (time.strftime('%m.%d %H:%M:%S', time.localtime(time.time())), epoch, loss,loss_test, acc_train,acc_test, auc_train,auc_test, c_index_train,c_index_test, recall_train, recall_test, precision_train, precision_test, f1_train_pos, f1_test_pos, f1_train, f1_test))
                     # early stop
                     if minimum_loss is None or minimum_loss * 0.995 > loss_test:
                     # if minimum_loss is None or minimum_loss > loss_test:
-                        if f1_test == 0:
+                        if f1_train == 0:
                             continue
                         minimum_loss = loss_test
                         auc_fold = auc_test
                         acc_fold = acc_test
                         c_index_fold = c_index_test
+                        f1_fold_pos = f1_test_pos
                         f1_fold = f1_test
                         early_stop_count = 0
                     elif auc_test > auc_fold and auc_test>0.5 and acc_test >= acc_fold:
@@ -115,6 +125,7 @@ def main():
                         auc_fold = auc_test
                         acc_fold = acc_test
                         c_index_fold = c_index_test
+                        f1_fold_pos = f1_test_pos
                         f1_fold = f1_test
                         early_stop_count = 0
                     else:
@@ -135,13 +146,16 @@ def main():
             acc_folds.append(acc_fold)
             auc_folds.append(auc_fold)
             f1_folds.append(f1_fold)
+            f1_folds_pos.append(f1_fold_pos)
             c_index_folds.append(c_index_fold)
             plt.plot(train_history[:, 0], train_history[:, 1], label='train')
             plt.plot(test_history[:, 0], test_history[:, 1], label='test')
             plt.legend()
             plt.savefig('figure/sample_%d_fold%d.png' % (args.sample_n, i))
             plt.cla()
-            model.save(args.data_dir)
+            if acc_fold > 0.7 and auc_fold > 0.6 and model_count < 10:
+                model.save(args.data_dir + "/model/model_%d" % model_count)
+                model_count += 1
             print("acc:%.3f\tauc:%.3f\tc_index:%.3f\tf1:%.3f"  % (acc_fold, auc_fold, c_index_fold, f1_fold))
             total_round += 1
             if gpu:
@@ -149,7 +163,7 @@ def main():
                 del X_test, Y_test, X_train, Y_train, model, optimizer
                 torch.cuda.empty_cache()
                 
-    print('CV-acc:%.3f CV-auc:%.3f CV-c-index:%.3f f1:%.3f' % (sum(acc_folds) / 5 / manytimes_n, sum(auc_folds) / 5 / manytimes_n, sum(c_index_folds) / 5 / manytimes_n, sum(f1_folds) / 5 / manytimes_n))
+    print('CV-acc:%.3f CV-auc:%.3f CV-c-index:%.3f f1:%.3f f1(neg):%.3f' % (sum(acc_folds) / 5 / manytimes_n, sum(auc_folds) / 5 / manytimes_n, sum(c_index_folds) / 5 / manytimes_n, sum(f1_folds_pos) / 5 / manytimes_n, sum(f1_folds) / 5 / manytimes_n))
 
 
 if __name__ == '__main__':

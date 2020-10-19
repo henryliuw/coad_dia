@@ -5,6 +5,9 @@ import os
 import pandas as pd
 import warnings
 
+from torch_geometric.nn import GCNConv, GraphConv, GENConv, GINConv
+from torch_geometric.nn import global_mean_pool, global_sort_pool, Set2Set, GlobalAttention, global_add_pool
+
 warnings.filterwarnings('ignore') # possibly harmful code
 
 class Predictor(nn.Module):
@@ -50,6 +53,49 @@ def weight_init(m):
         torch.nn.init.kaiming_normal_(m.weight)
         if m.bias: 
             torch.nn.init.kaiming_uniform_(m.bias)
+
+class GNN(torch.nn.Module):
+    def __init__(self, feature_size):
+        super().__init__()
+        torch.manual_seed(12345)
+        #self.conv1 = GraphConv(feature_size, 32)
+        #self.bn1 = nn.BatchNorm1d(32)
+        #self.conv2 = GraphConv(32, 32)
+        #self.bn2 = nn.BatchNorm1d(32)
+        #self.conv3 = GraphConv(32, 16)
+        #self.bn3 = nn.BatchNorm1d(16)
+        #self.conv4 = GraphConv(16, 16)
+        #self.bn4 = nn.BatchNorm1d(16)
+        self.conv1 = GINConv(nn.Sequential(nn.Linear(feature_size,64),  nn.BatchNorm1d(64), nn.ReLU(), nn.Linear(64,32)), train_eps=True)
+        self.conv2 = GINConv(nn.Sequential(nn.Linear(32,64),   nn.BatchNorm1d(64), nn.ReLU(), nn.Linear(64,16)), train_eps=True)
+        # self.conv3 = GINConv(nn.Sequential(nn.Linear(32,32),   nn.BatchNorm1d(32), nn.Dropout(p=0.5), nn.ReLU(), nn.Linear(32,16)), train_eps=True)
+        # self.conv4 = GINConv(nn.Sequential(nn.Linear(32,64),  nn.BatchNorm1d(64), nn.Dropout(p=0.5),  nn.ReLU(), nn.Linear(64,16)), train_eps=True)
+        # self.conv5 = GINConv(nn.Sequential(Linear(16,64),  nn.BatchNorm1d(64), nn.Dropout(p=0.2), nn.ReLU(), Linear(64,16)), train_eps=True)
+        # self.readout = Set2Set(8, 5)
+        # self.mlp = torch.nn.Sequential(Linear(8,8), F.Re(), Linear(8,1))
+        # self.readout = GlobalAttention(torch.nn.Sequential(Linear(8,32), nn.ReLU(), Linear(32,1)))
+        self.readout = global_mean_pool
+        self.lin = nn.Linear(16, 1)
+
+    def forward(self, x, edge_index, batch):
+        # 1. Obtain node embeddings 
+        x = self.conv1(x, edge_index)
+        #x = self.bn1(x)
+        x = self.conv2(x, edge_index)
+        #x = self.bn2(x)
+        #x = self.conv3(x, edge_index)
+        #x = self.bn3(x)
+        #x = self.conv4(x, edge_index)
+        #x = self.bn4(x)
+        #x = self.conv5(x, edge_index)
+        # 2. Readout layer
+        # x = global_mean_pool(x, batch)  # [batch_size, hidden_channels]
+        x = self.readout(x, batch)
+        # 3. Apply a final classifier
+        # x = F.dropout(x, p=0.5, training=self.training)
+        x = self.lin(x)
+        x = torch.nn.functional.sigmoid(x)
+        return x
 
 class CVDataLoader():
     ''' a 5-folds cross validation dataloader, with '''
@@ -152,31 +198,41 @@ class CVDataLoader():
             self.perm_idx = np.array((img_idx[:id1], img_idx[id1:id2], img_idx[id2:id3], img_idx[id3:id4], img_idx[id4:]))
         else:
             length_Y = len(self.Y)
-            perm = np.random.permutation(length_Y)
-            id1, id2, id3, id4 = int(0.2 * length_Y), int(0.4 * length_Y), int(0.6 * length_Y), int(0.8 * length_Y)
-            self.perm_idx = np.array((perm[:id1], perm[id1:id2], perm[id2:id3], perm[id3:id4], perm[id4:]))
-    
+            self.splitter = StratifiedKFold(n_splits=5)
+            self.train_idx = []
+            self.test_idx = []
+            length_Y = len(self.Y)
+            for train_idx, test_idx in self.splitter.split(np.zeros(length_Y), self.Y):
+                self.train_idx.append(train_idx)
+                self.test_idx.append(test_idx)
+            self.n_count = 0
+            #perm = np.random.permutation(length_Y)
+            #id1, id2, id3, id4 = int(0.2 * length_Y), int(0.4 * length_Y), int(0.6 * length_Y), int(0.8 * length_Y)
+            #self.perm_idx = np.array((perm[:id1], perm[id1:id2], perm[id2:id3], perm[id3:id4], perm[id4:]))
+
     def set_fold(self, i):
         train_idx_slice = [_ for _ in range(5)]
         train_idx_slice.remove(i)
-        if self.image_split:
-            self.train_idx = self.df['sample_id'].isin(np.concatenate(self.perm_idx[train_idx_slice]))
-            self.test_idx = self.df['sample_id'].isin(self.perm_idx[i])
-        else:
-            self.train_idx = np.concatenate(self.perm_idx[train_idx_slice])
-            self.test_idx = self.perm_idx[i]
+        #if self.image_split:
+        #    self.train_idx = self.df['sample_id'].isin(np.concatenate(self.perm_idx[train_idx_slice]))
+        #    self.test_idx = self.df['sample_id'].isin(self.perm_idx[i])
+        #else:
+        #    self.train_idx = np.concatenate(self.perm_idx[train_idx_slice])
+        #    self.test_idx = self.perm_idx[i]
 
-        self.X_train = self.X[self.train_idx]
-        self.Y_train = self.Y[self.train_idx]
+        #self.X_train = self.X[self.train_idx]
+        #self.Y_train = self.Y[self.train_idx]
+        self.X_train = self.X[self.train_idx[i]]
+        self.Y_train = self.Y[self.train_idx[i]]
         if self.image_split:
-            self.df_train = self.df[self.train_idx]
-            self.df_test = self.df[self.test_idx]
+            self.df_train = self.df[self.train_idx[i]]
+            self.df_test = self.df[self.test_idx[i]]
         else:
-            self.df_train = self.df.iloc[self.train_idx]
-            self.df_test = self.df.iloc[self.test_idx]
+            self.df_train = self.df.iloc[self.train_idx[i]]
+            self.df_test = self.df.iloc[self.test_idx[i]]
 
-        self.X_test = self.X[self.test_idx]
-        self.Y_test = self.Y[self.test_idx]
+        self.X_test = self.X[self.test_idx[i]]
+        self.Y_test = self.Y[self.test_idx[i]]
 
         if self.gpu:
             self.X_test = self.X_test.to(self.gpu)
@@ -214,3 +270,44 @@ class CVDataLoader():
                 train_X_batch = train_X_batch.to(self.gpu)
                 train_Y_batch = train_Y_batch.to(self.gpu)
             return train_X_batch, train_Y_batch, train_df_batch
+
+from sklearn.model_selection import StratifiedKFold
+
+class CrossValidationSplitter():
+    def __init__(self, dataset, df, n=5, stratify=True):
+        ''' 
+        dataset could be a list of datapoints
+        '''
+        self.n = n
+        self.df = df
+        self.dataset = dataset
+
+    def __iter__(self):
+        self.splitter = StratifiedKFold(n_splits=self.n)
+        self.train_idx = []
+        self.test_idx = []
+        length_Y = len(self.dataset)
+        for train_idx, test_idx in self.splitter.split(np.zeros(length_Y), self.df['y2'].to_numpy()):
+            self.train_idx.append(train_idx)
+            self.test_idx.append(test_idx)
+        self.n_count = 0
+        #split
+        #id1, id2, id3, id4 = int(0.2 * length_Y), int(0.4 * length_Y), int(0.6 * length_Y), int(0.8 * length_Y)
+        #self.perm_idx = np.array((perm[:id1], perm[id1:id2], perm[id2:id3], perm[id3:id4], perm[id4:]))
+        #fold_num = np.zeros(length_Y, dtype=np.int)
+        #for i in range(self.n):
+        #    fold_num[self.perm_idx[i]] = i
+        self.dataset_df = pd.DataFrame({'data':self.dataset})
+        return self
+
+    def __next__(self):
+        if self.n_count == self.n:
+            raise StopIteration
+        #train_idx_slice = [_ for _ in range(self.n)]
+        #train_idx_slice.remove(self.n_count)
+        #train_idx = self.dataset_df.fold.isin(train_idx_slice)
+        #test_idx = ~train_idx
+        train_idx = self.dataset_df.index.isin(self.train_idx[self.n_count])
+        test_idx = ~train_idx
+        self.n_count += 1
+        return self.dataset_df[train_idx].data.values.tolist(), self.dataset_df[test_idx].data.values.tolist(), self.df[train_idx], self.df[test_idx]

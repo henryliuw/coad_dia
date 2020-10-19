@@ -24,7 +24,8 @@ def main():
     args = parser.parse_args()
 
     feature_size = 32
-    gpu = "cuda:0"
+    #gpu = "cuda:0"
+    gpu = None
     # 5-folds cross validation
     dataloader = CVDataLoader(args, gpu, feature_size)
 
@@ -48,6 +49,8 @@ def main():
     f1_folds_pos = []
     total_round = 0
     model_count = 0
+
+    loss_function = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(1))
 
     for _ in range(manytimes_n): # averaging
         for i in range(5):
@@ -82,7 +85,7 @@ def main():
                 for X_train_batch, Y_train_batch, df_train_batch in dataloader:
                     # print(X_train_batch.shape)
                     result = model(X_train_batch)
-                    loss = nn.functional.binary_cross_entropy(result, Y_train_batch)
+                    loss = loss_function(result, Y_train_batch)
                     loss.backward()
                     optimizer.step()
                     optimizer.zero_grad()
@@ -91,7 +94,7 @@ def main():
 
                 if epoch % 20 == 0:
                     result_test = model(X_test)
-                    loss_test = nn.functional.binary_cross_entropy(result_test, Y_test)
+                    loss_test = loss_function(result_test, Y_test)
                     #loss_test = nn.functional.mse_loss(result_test, Y_test)
                     acc_train, acc_test = accuracy(result, Y_train), accuracy(result_test, Y_test)
                     auc_train, auc_test = auc(result, Y_train),  auc(result_test, Y_test)

@@ -9,69 +9,19 @@ import torch_geometric
 from torch_geometric.data import DataLoader
 import random
 from evaluation import accuracy, auc, c_index, recall, f1, precision
-
-def to_PyG_graph(data, model, image_file, y, threshold=80, evidence_n=20):
-    
-    score = model.tile_scoring(data.reshape(1,32,2000)).view(2000).detach()
-    with open(image_file, 'rb') as file:
-        location = pickle.load(file)
-    bot_idx = np.argsort(score)[-evidence_n:]
-    top_idx = np.argsort(score)[:evidence_n]
-    all_idx = np.r_[bot_idx, top_idx]
-    location_mat = np.array(location)[all_idx]
-
-    dist_1 = location_mat[:, 1].reshape(-1,1) - location_mat[:,1].reshape(1,-1)
-    dist_0 = location_mat[:, 0].reshape(-1,1) - location_mat[:,0].reshape(1,-1)
-    dist = ((dist_0 ** 2 + dist_1 ** 2) ** 0.5)
-    A = np.zeros_like(dist, dtype=np.int)
-    A [(dist < threshold)] = 1
-    A[range(evidence_n * 2),range(evidence_n * 2)] = 0
-    # print("Average node degree:%.2f" % (A.sum() / 2.0 /evidence_n))
-
-    edge_index = []
-    for i in range(40):
-        for j in range(40):
-            if A[i, j]:
-                edge_index.append((i,j))
-    edge_index = torch.tensor(edge_index).t().contiguous()
-    
-    x = data[:, all_idx].t().contiguous()
-    # x = score[all_idx].reshape(2 * evidence_n, 1)
-    graph_data = Data(x=x, edge_index=edge_index, y=torch.tensor(y, dtype=torch.float)) 
-    
-    return graph_data
-
-def construct_graph_dataset(args):
-    dataloader = CVDataLoader(args, gpu=None, feature_size=32)
-    dataloader.df.reset_index(inplace=True)
-    model = Predictor(evidence_size=20, layers=(100, 50, 1), feature_size=32)
-    model.load(args.data_dir+'/model/model_0')
-    dataset = []
-    for i in dataloader.df.index:
-        data = dataloader.X[i]
-        image_file =  dataloader.df.loc[i, 'image_file']
-        dataset.append(to_PyG_graph(data, model, image_file, dataloader.df.loc[i, 'y2']))
-    
-    return dataset, dataloader.df
-
-def concat_result(dataloader, model):
-    out = []
-    target = []
-    for data in dataloader:
-        out.append(model(data.x, data.edge_index, data.batch).view(-1))
-        target.append(data.y)
-    return torch.cat(out), torch.cat(target)
+import os
 
 def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", default='data/sampling', help='determine the base dir of the dataset document')
     parser.add_argument("--sample_n", default=1000, type=int, help='starting image index of preprocessing')
-    parser.add_argument("--evidence_n", default=20, type=int, help='how many top/bottom tiles to pick from')
+    parser.add_argument("--evidence_n", default=50, type=int, help='how many top/bottom tiles to pick from')
     parser.add_argument("--repl_n", default=3, type=int, help='how many resampled replications')
     parser.add_argument("--image_split", action='store_true', help='if use image_split')
     parser.add_argument("--batch_size", default=100, type=int, help="batch size")
     parser.add_argument("--stage_two", action='store_true', help='if only use stage two patients')
+    parser.add_argument("--threshold", default=80, type=float, help='threshold')
     parser.add_argument("--changhai", action='store_true', help='if use additional data')
     args = parser.parse_args()
 
@@ -86,10 +36,12 @@ def main():
     n_manytimes = 8
 
     dataset, df = construct_graph_dataset(args)
-    splitter = CrossValidationSplitter(dataset, df, n=5, n_manytimes=n_manytimes)
+    splitter = CrossValidationSplitter(dataset, df, n=4, n_manytimes=n_manytimes)
     # criterion = torch.nn.CrossEntropyLoss()
     criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.7))
     fold_num=0
+    if not os.path.isdir(os.path.join(args.data_dir, 'model')):
+        os.mkdir(os.path.join(args.data_dir, 'model'))
 
     for train_dataset, test_dataset, train_df, test_df in splitter:
         print("starting fold %d-%d" % (fold_num // 5, fold_num % 5))
@@ -140,7 +92,7 @@ def main():
                     c_index_fold = c_index_test
                     f1_fold = f1_test
                     early_stop_count = 0
-                    if acc_fold > 0.75 and auc_fold > 0.75:
+                    if acc_fold > 0.7 and auc_fold > 0.7:
                         model.save(args.data_dir + "/model/graph_%d" % model_count)
                 #elif auc_test > auc_fold and auc_test>0.5 and acc_test >= acc_fold:
                 #    minimum_loss = loss_test
@@ -160,28 +112,83 @@ def main():
                         model.save(args.data_dir + "/model/graph_%d" % model_count)
                 else:
                     early_stop_count += 1
-                if auc_fold - 1 < 0.0001:
-                    print('wtf')
+                if abs(auc_fold - 1) < 0.0001:
+                    pass
+                    #print('wtf')
                 if early_stop_count > 3 and epoch>25:
                     if args.stage_two:
                         if auc_fold>0.55 and acc_fold > 0.55:
                             print('early stop at epoch %d' % epoch)
                             if acc_fold > 0.75 and auc_fold > 0.75:
+                                model.load(args.data_dir + "/model/graph_%d" % model_count)
                                 model_count += 1
                             break
                     elif early_stop_count > 3:
                         print('early stop at epoch %d' % epoch)
                         break
-        else:
-            acc_folds.append(acc_fold)
-            auc_folds.append(auc_fold)
-            f1_folds.append(f1_fold)
-            c_index_folds.append(c_index_fold)
+        
+        acc_folds.append(acc_fold)
+        auc_folds.append(auc_fold)
+        f1_folds.append(f1_fold)
+        c_index_folds.append(c_index_fold)
         fold_num += 1
         print("acc:%.3f\tauc:%.3f\tc_index:%.3f\tf1:%.3f"  % (acc_fold, auc_fold, c_index_fold, f1_fold))
 
-    total_count =  5 * n_manytimes
+    total_count = 4 * n_manytimes
     print('CV-acc:%.3f CV-auc:%.3f CV-c-index:%.3f f1(neg):%.3f' % (sum(acc_folds) / total_count, sum(auc_folds) / total_count, sum(c_index_folds)  / total_count,  sum(f1_folds)  / total_count))
+
+def to_PyG_graph(data, model, image_file, y, threshold=80, evidence_n=20):
+    
+    score = model.tile_scoring(data.reshape(1,32,2000)).view(2000).detach()
+    with open(image_file, 'rb') as file:
+        location = pickle.load(file)
+    bot_idx = np.argsort(score)[-evidence_n:]
+    top_idx = np.argsort(score)[:evidence_n]
+    all_idx = np.r_[bot_idx, top_idx]
+    location_mat = np.array(location)[all_idx]
+
+    dist_1 = location_mat[:, 1].reshape(-1,1) - location_mat[:,1].reshape(1,-1)
+    dist_0 = location_mat[:, 0].reshape(-1,1) - location_mat[:,0].reshape(1,-1)
+    dist = ((dist_0 ** 2 + dist_1 ** 2) ** 0.5)
+    A = np.zeros_like(dist, dtype=np.int)
+    A [(dist < threshold)] = 1
+    A[range(evidence_n * 2),range(evidence_n * 2)] = 0
+    # print("Average node degree:%.2f" % (A.sum() / 2.0 /evidence_n))
+
+    edge_index = []
+    for i in range(len(A)):
+        for j in range(len(A)):
+            if A[i, j]:
+                edge_index.append((i,j))
+    edge_index = torch.tensor(edge_index).t().contiguous()
+    
+    x = data[:, all_idx].t().contiguous()
+    # x = score[all_idx].reshape(2 * evidence_n, 1)
+    graph_data = Data(x=x, edge_index=edge_index, y=torch.tensor(y, dtype=torch.float)) 
+    
+    return graph_data
+
+def construct_graph_dataset(args):
+    dataloader = CVDataLoader(args, gpu=None, feature_size=32)
+    dataloader.df.reset_index(inplace=True)
+    model = Predictor(evidence_size=20, layers=(100, 50, 1), feature_size=32)
+    model.load(args.data_dir+'/model/model_0')
+    dataset = []
+    for i in dataloader.df.index:
+        data = dataloader.X[i]
+        image_file =  dataloader.df.loc[i, 'image_file']
+        dataset.append(to_PyG_graph(data, model, image_file, dataloader.df.loc[i, 'y2'], threshold=args.threshold, evidence_n=args.evidence_n))
+    
+    return dataset, dataloader.df
+
+def concat_result(dataloader, model):
+    out = []
+    target = []
+    for data in dataloader:
+        out.append(model(data.x, data.edge_index, data.batch).view(-1))
+        target.append(data.y)
+    return torch.cat(out), torch.cat(target)
+
 
 if __name__=='__main__':
     main()

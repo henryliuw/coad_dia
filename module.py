@@ -67,16 +67,16 @@ class GNN(torch.nn.Module):
         #self.bn3 = nn.BatchNorm1d(16)
         #self.conv4 = GraphConv(16, 16)
         #self.bn4 = nn.BatchNorm1d(16)
-        self.conv1 = GINConv(nn.Sequential(nn.Linear(feature_size,64),  nn.BatchNorm1d(64), nn.Dropout(p=0.5), nn.ReLU(), nn.Linear(64,32)), train_eps=True)
-        self.conv2 = GINConv(nn.Sequential(nn.Linear(32,64),   nn.BatchNorm1d(64), nn.Dropout(p=0.5), nn.ReLU(), nn.Linear(64,32)), train_eps=True)
-        self.conv3 = GINConv(nn.Sequential(nn.Linear(32,64),   nn.BatchNorm1d(64), nn.Dropout(p=0.5), nn.ReLU(), nn.Linear(64,32)), train_eps=True)
-        self.conv4 = GINConv(nn.Sequential(nn.Linear(32,64),  nn.BatchNorm1d(64), nn.Dropout(p=0.5),  nn.ReLU(), nn.Linear(64,16)), train_eps=True)
+        self.conv1 = GINConv(nn.Sequential(nn.Linear(feature_size,32),  nn.BatchNorm1d(32), nn.Dropout(p=0.5), nn.ReLU(), nn.Linear(32,16)), train_eps=True)
+        self.conv2 = GINConv(nn.Sequential(nn.Linear(16,32),   nn.BatchNorm1d(32), nn.Dropout(p=0.5), nn.ReLU(), nn.Linear(32,16)), train_eps=True)
+        self.conv3 = GINConv(nn.Sequential(nn.Linear(16,32),   nn.BatchNorm1d(32), nn.Dropout(p=0.5), nn.ReLU(), nn.Linear(32,8)), train_eps=True)
+        # self.conv4 = GINConv(nn.Sequential(nn.Linear(32,64),  nn.BatchNorm1d(64), nn.Dropout(p=0.5),  nn.ReLU(), nn.Linear(64,16)), train_eps=True)
         # self.conv5 = GINConv(nn.Sequential(Linear(16,64),  nn.BatchNorm1d(64), nn.Dropout(p=0.2), nn.ReLU(), Linear(64,16)), train_eps=True)
         # self.readout = Set2Set(8, 5)
         # self.mlp = torch.nn.Sequential(Linear(8,8), F.Re(), Linear(8,1))
-        # self.readout = GlobalAttention(torch.nn.Sequential(Linear(8,32), nn.ReLU(), Linear(32,1)))
-        self.readout = global_mean_pool
-        self.lin = nn.Linear(16, 1)
+        self.readout = GlobalAttention(torch.nn.Sequential(nn.Linear(8,1)))
+        # self.readout = global_mean_pool
+        self.lin = nn.Linear(8, 1)
 
     def forward(self, x, edge_index, batch):
         # 1. Obtain node embeddings 
@@ -86,7 +86,7 @@ class GNN(torch.nn.Module):
         #x = self.bn2(x)
         x = self.conv3(x, edge_index)
         #x = self.bn3(x)
-        x = self.conv4(x, edge_index)
+        # x = self.conv4(x, edge_index)
         #x = self.bn4(x)
         #x = self.conv5(x, edge_index)
         # 2. Readout layer
@@ -277,8 +277,6 @@ class CVDataLoader():
                 train_X_batch = train_X_batch.to(self.gpu)
                 train_Y_batch = train_Y_batch.to(self.gpu)
             return train_X_batch, train_Y_batch, train_df_batch
-
-from sklearn.model_selection import StratifiedKFold
 
 class CrossValidationSplitter():
     def __init__(self, dataset, df, n=5, n_manytimes=8):

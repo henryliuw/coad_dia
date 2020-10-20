@@ -50,7 +50,7 @@ def main():
     total_round = 0
     model_count = 0
 
-    loss_function = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(1))
+    loss_function = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.8))
 
     for _ in range(manytimes_n): # averaging
         for i in range(5):

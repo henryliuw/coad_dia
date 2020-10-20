@@ -4,7 +4,8 @@ import numpy as np
 import os
 import pandas as pd
 import warnings
-
+import random
+from sklearn.model_selection import RepeatedStratifiedKFold
 from torch_geometric.nn import GCNConv, GraphConv, GENConv, GINConv
 from torch_geometric.nn import global_mean_pool, global_sort_pool, Set2Set, GlobalAttention, global_add_pool
 
@@ -66,10 +67,10 @@ class GNN(torch.nn.Module):
         #self.bn3 = nn.BatchNorm1d(16)
         #self.conv4 = GraphConv(16, 16)
         #self.bn4 = nn.BatchNorm1d(16)
-        self.conv1 = GINConv(nn.Sequential(nn.Linear(feature_size,64),  nn.BatchNorm1d(64), nn.ReLU(), nn.Linear(64,32)), train_eps=True)
-        self.conv2 = GINConv(nn.Sequential(nn.Linear(32,64),   nn.BatchNorm1d(64), nn.ReLU(), nn.Linear(64,16)), train_eps=True)
-        # self.conv3 = GINConv(nn.Sequential(nn.Linear(32,32),   nn.BatchNorm1d(32), nn.Dropout(p=0.5), nn.ReLU(), nn.Linear(32,16)), train_eps=True)
-        # self.conv4 = GINConv(nn.Sequential(nn.Linear(32,64),  nn.BatchNorm1d(64), nn.Dropout(p=0.5),  nn.ReLU(), nn.Linear(64,16)), train_eps=True)
+        self.conv1 = GINConv(nn.Sequential(nn.Linear(feature_size,64),  nn.BatchNorm1d(64), nn.Dropout(p=0.5), nn.ReLU(), nn.Linear(64,32)), train_eps=True)
+        self.conv2 = GINConv(nn.Sequential(nn.Linear(32,64),   nn.BatchNorm1d(64), nn.Dropout(p=0.5), nn.ReLU(), nn.Linear(64,32)), train_eps=True)
+        self.conv3 = GINConv(nn.Sequential(nn.Linear(32,64),   nn.BatchNorm1d(64), nn.Dropout(p=0.5), nn.ReLU(), nn.Linear(64,32)), train_eps=True)
+        self.conv4 = GINConv(nn.Sequential(nn.Linear(32,64),  nn.BatchNorm1d(64), nn.Dropout(p=0.5),  nn.ReLU(), nn.Linear(64,16)), train_eps=True)
         # self.conv5 = GINConv(nn.Sequential(Linear(16,64),  nn.BatchNorm1d(64), nn.Dropout(p=0.2), nn.ReLU(), Linear(64,16)), train_eps=True)
         # self.readout = Set2Set(8, 5)
         # self.mlp = torch.nn.Sequential(Linear(8,8), F.Re(), Linear(8,1))
@@ -83,9 +84,9 @@ class GNN(torch.nn.Module):
         #x = self.bn1(x)
         x = self.conv2(x, edge_index)
         #x = self.bn2(x)
-        #x = self.conv3(x, edge_index)
+        x = self.conv3(x, edge_index)
         #x = self.bn3(x)
-        #x = self.conv4(x, edge_index)
+        x = self.conv4(x, edge_index)
         #x = self.bn4(x)
         #x = self.conv5(x, edge_index)
         # 2. Readout layer
@@ -96,6 +97,12 @@ class GNN(torch.nn.Module):
         x = self.lin(x)
         x = torch.nn.functional.sigmoid(x)
         return x
+
+    def save(self, save_file):
+        torch.save(self.state_dict(), save_file)
+
+    def load(self, save_file):
+        self.load_state_dict(torch.load(save_file))
 
 class CVDataLoader():
     ''' a 5-folds cross validation dataloader, with '''
@@ -198,7 +205,7 @@ class CVDataLoader():
             self.perm_idx = np.array((img_idx[:id1], img_idx[id1:id2], img_idx[id2:id3], img_idx[id3:id4], img_idx[id4:]))
         else:
             length_Y = len(self.Y)
-            self.splitter = StratifiedKFold(n_splits=5)
+            self.splitter = RepeatedStratifiedKFold(n_splits=5, n_repeats=1, random_state=random.randint(0,1000))
             self.train_idx = []
             self.test_idx = []
             length_Y = len(self.Y)
@@ -274,22 +281,23 @@ class CVDataLoader():
 from sklearn.model_selection import StratifiedKFold
 
 class CrossValidationSplitter():
-    def __init__(self, dataset, df, n=5, stratify=True):
+    def __init__(self, dataset, df, n=5, n_manytimes=8):
         ''' 
         dataset could be a list of datapoints
         '''
         self.n = n
         self.df = df
         self.dataset = dataset
-
-    def __iter__(self):
-        self.splitter = StratifiedKFold(n_splits=self.n)
+        self.splitter = RepeatedStratifiedKFold(n_splits=self.n, n_repeats=n_manytimes, random_state=random.randint(0,1000))
         self.train_idx = []
         self.test_idx = []
         length_Y = len(self.dataset)
         for train_idx, test_idx in self.splitter.split(np.zeros(length_Y), self.df['y2'].to_numpy()):
             self.train_idx.append(train_idx)
             self.test_idx.append(test_idx)
+        self.dataset_df = pd.DataFrame({'data':self.dataset})
+        self.n_manytimes = n_manytimes
+    def __iter__(self):
         self.n_count = 0
         #split
         #id1, id2, id3, id4 = int(0.2 * length_Y), int(0.4 * length_Y), int(0.6 * length_Y), int(0.8 * length_Y)
@@ -297,11 +305,10 @@ class CrossValidationSplitter():
         #fold_num = np.zeros(length_Y, dtype=np.int)
         #for i in range(self.n):
         #    fold_num[self.perm_idx[i]] = i
-        self.dataset_df = pd.DataFrame({'data':self.dataset})
         return self
 
     def __next__(self):
-        if self.n_count == self.n:
+        if self.n_count == self.n * self.n_manytimes:
             raise StopIteration
         #train_idx_slice = [_ for _ in range(self.n)]
         #train_idx_slice.remove(self.n_count)

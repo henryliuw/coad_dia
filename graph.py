@@ -16,12 +16,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", default='data/sampling', help='determine the base dir of the dataset document')
     parser.add_argument("--sample_n", default=1000, type=int, help='starting image index of preprocessing')
-    parser.add_argument("--evidence_n", default=50, type=int, help='how many top/bottom tiles to pick from')
+    parser.add_argument("--evidence_n", default=20, type=int, help='how many top/bottom tiles to pick from')
     parser.add_argument("--repl_n", default=3, type=int, help='how many resampled replications')
     parser.add_argument("--image_split", action='store_true', help='if use image_split')
     parser.add_argument("--batch_size", default=100, type=int, help="batch size")
     parser.add_argument("--stage_two", action='store_true', help='if only use stage two patients')
-    parser.add_argument("--threshold", default=80, type=float, help='threshold')
+    parser.add_argument("--threshold", default=70, type=float, help='threshold')
     parser.add_argument("--changhai", action='store_true', help='if use additional data')
     args = parser.parse_args()
 
@@ -36,9 +36,9 @@ def main():
     n_manytimes = 8
 
     dataset, df = construct_graph_dataset(args)
-    splitter = CrossValidationSplitter(dataset, df, n=4, n_manytimes=n_manytimes)
+    splitter = CrossValidationSplitter(dataset, df, n=5, n_manytimes=n_manytimes)
     # criterion = torch.nn.CrossEntropyLoss()
-    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.7))
+    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.6))
     fold_num=0
     if not os.path.isdir(os.path.join(args.data_dir, 'model')):
         os.mkdir(os.path.join(args.data_dir, 'model'))
@@ -92,7 +92,7 @@ def main():
                     c_index_fold = c_index_test
                     f1_fold = f1_test
                     early_stop_count = 0
-                    if acc_fold > 0.7 and auc_fold > 0.7:
+                    if acc_fold > 0.75 and auc_fold > 0.75:
                         model.save(args.data_dir + "/model/graph_%d" % model_count)
                 #elif auc_test > auc_fold and auc_test>0.5 and acc_test >= acc_fold:
                 #    minimum_loss = loss_test
@@ -134,7 +134,7 @@ def main():
         fold_num += 1
         print("acc:%.3f\tauc:%.3f\tc_index:%.3f\tf1:%.3f"  % (acc_fold, auc_fold, c_index_fold, f1_fold))
 
-    total_count = 4 * n_manytimes
+    total_count = 5 * n_manytimes
     print('CV-acc:%.3f CV-auc:%.3f CV-c-index:%.3f f1(neg):%.3f' % (sum(acc_folds) / total_count, sum(auc_folds) / total_count, sum(c_index_folds)  / total_count,  sum(f1_folds)  / total_count))
 
 def to_PyG_graph(data, model, image_file, y, threshold=80, evidence_n=20):

@@ -331,6 +331,9 @@ def main():
             read_samples(image_path,  args.output_dir, name, sample_size=args.sample_n, repl_n=args.repl_n, extractor=args.extractor)
     else:
         for i in sorted(os.listdir('/home/DiskB/tcga_coad_dia/changhai')):
+            skip = ['6258' ,'6268', '6250', '6263', '6269', '6247', '6277', '6273', '6280', '6289', '6253', '6245', '6283', '6294']
+            if i.strip('.svs') in skip:
+                continue
             image_path = os.path.join('/home/DiskB/tcga_coad_dia/changhai', i)
             read_samples(image_path,  args.output_dir, i.split('.')[0], sample_size=args.sample_n, repl_n=args.repl_n, changhai=True, extractor=args.extractor)
         

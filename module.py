@@ -154,7 +154,8 @@ class CVDataLoader():
                 file_dir = os.path.join(args.data_dir, 'changhai' ,changhai_csv.loc[i, 'file'])
                 X_changhai.append(np.load(file_dir).reshape(1,2000,32))
                 y = changhai_csv.loc[i, 'y']
-                df_new = df_new.append({"y": y, "y2": y, "time": np.nan, 'sample_id': np.nan, 'image_file':np.nan, 'stage_two':True}, ignore_index=True)
+                image_file = file_dir.strip('features.npy') + 'name.pkl'
+                df_new = df_new.append({"y": y, "y2": y, "time": np.nan, 'sample_id': np.nan, 'image_file':image_file, 'stage_two':True}, ignore_index=True)
             X_changhai = np.concatenate(X_changhai)
 
             # retrieve X, Y

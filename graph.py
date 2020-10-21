@@ -16,7 +16,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", default='data/sampling', help='determine the base dir of the dataset document')
     parser.add_argument("--sample_n", default=1000, type=int, help='starting image index of preprocessing')
-    parser.add_argument("--evidence_n", default=20, type=int, help='how many top/bottom tiles to pick from')
+    parser.add_argument("--evidence_n", default=100, type=int, help='how many top/bottom tiles to pick from')
     parser.add_argument("--repl_n", default=3, type=int, help='how many resampled replications')
     parser.add_argument("--image_split", action='store_true', help='if use image_split')
     parser.add_argument("--batch_size", default=100, type=int, help="batch size")
@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--changhai", action='store_true', help='if use additional data')
     args = parser.parse_args()
 
+    gpu = "cuda:0"
     n_epoch = 80
     acc_folds = []
     auc_folds = []
@@ -35,10 +36,10 @@ def main():
     model_count = 0
     n_manytimes = 8
 
-    dataset, df = construct_graph_dataset(args)
+    dataset, df = construct_graph_dataset(args, gpu)
     splitter = CrossValidationSplitter(dataset, df, n=5, n_manytimes=n_manytimes)
     # criterion = torch.nn.CrossEntropyLoss()
-    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.6))
+    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.7))
     fold_num=0
     if not os.path.isdir(os.path.join(args.data_dir, 'model')):
         os.mkdir(os.path.join(args.data_dir, 'model'))
@@ -53,13 +54,13 @@ def main():
         auc_fold = None
         acc_fold = None
         early_stop_count = 0
-        model = GNN(32)
+        model = GNN(32).to(gpu)
         optimizer = torch.optim.RMSprop(model.parameters(), lr=0.0004, weight_decay=0.001)
 
         for epoch in range(n_epoch):
             model.train()
             for data in train_loader:  # Iterate in batches over the training dataset.
-                y_pred = model(data.x, data.edge_index, data.batch).view(-1)  # Perform a single forward pass.
+                y_pred = model(data.x, data.edge_index, data.batch.to(gpu)).view(-1)  # Perform a single forward pass.
                 loss = criterion(y_pred, data.y)  # Compute the loss.
                 loss.backward()  # Derive gradients.
                 optimizer.step()  # Update parameters based on gradients.
@@ -67,8 +68,8 @@ def main():
 
             if epoch % 1 == 0:
                 model.eval()
-                y_pred_train, y_train = concat_result(train_loader, model)
-                y_pred_test, y_test = concat_result(test_loader, model)
+                y_pred_train, y_train = concat_result(train_loader, model, gpu)
+                y_pred_test, y_test = concat_result(test_loader, model, gpu)
                 loss_train, loss_test = criterion(y_pred_train, y_train), criterion(y_pred_test, y_test)
                 #loss_test = nn.functional.mse_loss(result_test, Y_test)
                 acc_train, acc_test = accuracy(y_pred_train, y_train), accuracy(y_pred_test, y_test)
@@ -92,7 +93,7 @@ def main():
                     c_index_fold = c_index_test
                     f1_fold = f1_test
                     early_stop_count = 0
-                    if acc_fold > 0.75 and auc_fold > 0.75:
+                    if acc_fold > 0.7 and auc_fold > 0.7:
                         model.save(args.data_dir + "/model/graph_%d" % model_count)
                 #elif auc_test > auc_fold and auc_test>0.5 and acc_test >= acc_fold:
                 #    minimum_loss = loss_test
@@ -108,7 +109,7 @@ def main():
                     c_index_fold = c_index_test
                     f1_fold = f1_test
                     early_stop_count = 0
-                    if acc_fold > 0.75 and auc_fold > 0.75:
+                    if acc_fold > 0.7 and auc_fold > 0.7:
                         model.save(args.data_dir + "/model/graph_%d" % model_count)
                 else:
                     early_stop_count += 1
@@ -119,7 +120,7 @@ def main():
                     if args.stage_two:
                         if auc_fold>0.55 and acc_fold > 0.55:
                             print('early stop at epoch %d' % epoch)
-                            if acc_fold > 0.75 and auc_fold > 0.75:
+                            if acc_fold > 0.7 and auc_fold > 0.7:
                                 model.load(args.data_dir + "/model/graph_%d" % model_count)
                                 model_count += 1
                             break
@@ -137,14 +138,18 @@ def main():
     total_count = 5 * n_manytimes
     print('CV-acc:%.3f CV-auc:%.3f CV-c-index:%.3f f1(neg):%.3f' % (sum(acc_folds) / total_count, sum(auc_folds) / total_count, sum(c_index_folds)  / total_count,  sum(f1_folds)  / total_count))
 
-def to_PyG_graph(data, model, image_file, y, threshold=80, evidence_n=20):
+def to_PyG_graph(data, model, image_file, y, gpu, threshold=80, evidence_n=20, method='score'):
     
-    score = model.tile_scoring(data.reshape(1,32,2000)).view(2000).detach()
+    if method=='score':
+        score = model.tile_scoring(data.reshape(1,32,2000)).view(2000).detach()
+        bot_idx = np.argsort(score)[-evidence_n:]
+        top_idx = np.argsort(score)[:evidence_n]
+        all_idx = np.r_[bot_idx, top_idx]
+    elif method=='random':
+        all_idx = random.sample(range(2000), evidence_n * 2)
+
     with open(image_file, 'rb') as file:
         location = pickle.load(file)
-    bot_idx = np.argsort(score)[-evidence_n:]
-    top_idx = np.argsort(score)[:evidence_n]
-    all_idx = np.r_[bot_idx, top_idx]
     location_mat = np.array(location)[all_idx]
 
     dist_1 = location_mat[:, 1].reshape(-1,1) - location_mat[:,1].reshape(1,-1)
@@ -160,16 +165,16 @@ def to_PyG_graph(data, model, image_file, y, threshold=80, evidence_n=20):
         for j in range(len(A)):
             if A[i, j]:
                 edge_index.append((i,j))
-    edge_index = torch.tensor(edge_index).t().contiguous()
+    edge_index = torch.tensor(edge_index).t().contiguous().to(gpu)
     
-    x = data[:, all_idx].t().contiguous()
+    x = data[:, all_idx].t().contiguous().to(gpu)
     # x = score[all_idx].reshape(2 * evidence_n, 1)
-    graph_data = Data(x=x, edge_index=edge_index, y=torch.tensor(y, dtype=torch.float)) 
+    graph_data = Data(x=x, edge_index=edge_index, y=torch.tensor(y, dtype=torch.float).to(gpu)) 
     
     return graph_data
 
-def construct_graph_dataset(args):
-    dataloader = CVDataLoader(args, gpu=None, feature_size=32)
+def construct_graph_dataset(args, gpu):
+    dataloader = CVDataLoader(args, gpu=gpu, feature_size=32)
     dataloader.df.reset_index(inplace=True)
     model = Predictor(evidence_size=20, layers=(100, 50, 1), feature_size=32)
     model.load(args.data_dir+'/model/model_0')
@@ -177,15 +182,15 @@ def construct_graph_dataset(args):
     for i in dataloader.df.index:
         data = dataloader.X[i]
         image_file =  dataloader.df.loc[i, 'image_file']
-        dataset.append(to_PyG_graph(data, model, image_file, dataloader.df.loc[i, 'y2'], threshold=args.threshold, evidence_n=args.evidence_n))
+        dataset.append(to_PyG_graph(data, model, image_file, dataloader.df.loc[i, 'y2'], gpu, threshold=args.threshold, evidence_n=args.evidence_n, method='random'))
     
     return dataset, dataloader.df
 
-def concat_result(dataloader, model):
+def concat_result(dataloader, model, gpu):
     out = []
     target = []
     for data in dataloader:
-        out.append(model(data.x, data.edge_index, data.batch).view(-1))
+        out.append(model(data.x, data.edge_index, data.batch.to(gpu)).view(-1))
         target.append(data.y)
     return torch.cat(out), torch.cat(target)
 

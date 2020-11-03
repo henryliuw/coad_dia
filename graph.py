@@ -10,18 +10,20 @@ from torch_geometric.data import DataLoader
 import random
 from evaluation import accuracy, auc, c_index, recall, f1, precision
 import os
+from sklearn.cluster import KMeans
+from sklearn.metrics.pairwise import euclidean_distances as euclidean_dist
 
 def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", default='data/sampling', help='determine the base dir of the dataset document')
     parser.add_argument("--sample_n", default=1000, type=int, help='starting image index of preprocessing')
-    parser.add_argument("--evidence_n", default=100, type=int, help='how many top/bottom tiles to pick from')
+    parser.add_argument("--evidence_n", default=500, type=int, help='how many top/bottom tiles to pick from')
     parser.add_argument("--repl_n", default=3, type=int, help='how many resampled replications')
     parser.add_argument("--image_split", action='store_true', help='if use image_split')
     parser.add_argument("--batch_size", default=100, type=int, help="batch size")
     parser.add_argument("--stage_two", action='store_true', help='if only use stage two patients')
-    parser.add_argument("--threshold", default=70, type=float, help='threshold')
+    parser.add_argument("--threshold", default=25, type=float, help='threshold')
     parser.add_argument("--changhai", action='store_true', help='if use additional data')
     args = parser.parse_args()
 
@@ -36,10 +38,25 @@ def main():
     model_count = 0
     n_manytimes = 8
 
-    dataset, df = construct_graph_dataset(args, gpu)
+    # caching
+    if os.path.exists(os.path.join(args.data_dir, 'graph', 'graph_dataset.pkl')) and os.path.exists(os.path.join(args.data_dir, 'graph', 'graph_df.pkl')):
+        print("loading cached graph data")
+        with open(os.path.join(args.data_dir, 'graph', 'graph_dataset.pkl'), 'rb') as file:
+            dataset = pickle.load(file)
+        with open(os.path.join(args.data_dir, 'graph', 'graph_df.pkl'), 'rb') as file:
+            df = pickle.load(file)
+    else:
+        if not os.path.exists(os.path.join(args.data_dir, 'graph')):
+            os.mkdir(os.path.join(args.data_dir, 'graph'))
+        dataset, df = construct_graph_dataset(args, gpu)
+        with open(os.path.join(args.data_dir, 'graph', 'graph_dataset.pkl'), 'wb') as file:
+            pickle.dump(dataset, file)
+        with open(os.path.join(args.data_dir, 'graph', 'graph_df.pkl'), 'wb') as file:
+            pickle.dump(df, file)
+    
     splitter = CrossValidationSplitter(dataset, df, n=5, n_manytimes=n_manytimes)
     # criterion = torch.nn.CrossEntropyLoss()
-    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.7))
+    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.5))
     fold_num=0
     if not os.path.isdir(os.path.join(args.data_dir, 'model')):
         os.mkdir(os.path.join(args.data_dir, 'model'))
@@ -93,7 +110,7 @@ def main():
                     c_index_fold = c_index_test
                     f1_fold = f1_test
                     early_stop_count = 0
-                    if acc_fold > 0.7 and auc_fold > 0.7:
+                    if acc_fold > 0.75 and auc_fold > 0.75:
                         model.save(args.data_dir + "/model/graph_%d" % model_count)
                 #elif auc_test > auc_fold and auc_test>0.5 and acc_test >= acc_fold:
                 #    minimum_loss = loss_test
@@ -109,7 +126,7 @@ def main():
                     c_index_fold = c_index_test
                     f1_fold = f1_test
                     early_stop_count = 0
-                    if acc_fold > 0.7 and auc_fold > 0.7:
+                    if acc_fold > 0.75 and auc_fold > 0.75:
                         model.save(args.data_dir + "/model/graph_%d" % model_count)
                 else:
                     early_stop_count += 1
@@ -120,7 +137,7 @@ def main():
                     if args.stage_two:
                         if auc_fold>0.55 and acc_fold > 0.55:
                             print('early stop at epoch %d' % epoch)
-                            if acc_fold > 0.7 and auc_fold > 0.7:
+                            if acc_fold > 0.75 and auc_fold > 0.75:
                                 model.load(args.data_dir + "/model/graph_%d" % model_count)
                                 model_count += 1
                             break
@@ -138,9 +155,11 @@ def main():
     total_count = 5 * n_manytimes
     print('CV-acc:%.3f CV-auc:%.3f CV-c-index:%.3f f1(neg):%.3f' % (sum(acc_folds) / total_count, sum(auc_folds) / total_count, sum(c_index_folds)  / total_count,  sum(f1_folds)  / total_count))
 
-def to_PyG_graph(data, model, image_file, y, gpu, threshold=80, evidence_n=20, method='score'):
+
+def to_PyG_graph(data, image_file, y, model='None', gpu=None, threshold=80, evidence_n=20, method='random',return_edge=False):
     
     if method=='score':
+        evidence_n *= 2
         score = model.tile_scoring(data.reshape(1,32,2000)).view(2000).detach()
         bot_idx = np.argsort(score)[-evidence_n:]
         top_idx = np.argsort(score)[:evidence_n]
@@ -157,7 +176,7 @@ def to_PyG_graph(data, model, image_file, y, gpu, threshold=80, evidence_n=20, m
     dist = ((dist_0 ** 2 + dist_1 ** 2) ** 0.5)
     A = np.zeros_like(dist, dtype=np.int)
     A [(dist < threshold)] = 1
-    A[range(evidence_n * 2),range(evidence_n * 2)] = 0
+    A[range(evidence_n),range(evidence_n)] = 0
     # print("Average node degree:%.2f" % (A.sum() / 2.0 /evidence_n))
 
     edge_index = []
@@ -170,8 +189,77 @@ def to_PyG_graph(data, model, image_file, y, gpu, threshold=80, evidence_n=20, m
     x = data[:, all_idx].t().contiguous().to(gpu)
     # x = score[all_idx].reshape(2 * evidence_n, 1)
     graph_data = Data(x=x, edge_index=edge_index, y=torch.tensor(y, dtype=torch.float).to(gpu)) 
+
+    if return_edge:
+
+        return graph_data, location_mat, edge_index.numpy().T
+    else:
+        return graph_data
+
+def get_original_file(loc_file, type):
+    if type=="tcga":
+        useful_subset = pd.read_csv('data/useful_subset.csv')
+        i = int(loc_file.split('/')[-1].split('_')[0])
+        # that_row = dataset.df[dataset.df['index']==i]
+        image_path = os.path.join('/home/DiskB/tcga_coad_dia', useful_subset.loc[i, 'id'],useful_subset.loc[i, 'File me'])
+    elif type=="changhai":
+        i = int(loc_file.split('/')[-1].split('_')[0])
+        image_path = os.path.join('/home/DiskB/tcga_coad_dia/changhai', i+'.svs')
+    return image_path
+
+def plot_graph(loc_file, aggregated_location, edge_index, type='tcga'):
+    original_file = get_original_file(loc_file, type)
+    slide = openslide.OpenSlide(original_file)
+    level_downsamples = sorted([round(i) for i in slide.level_downsamples], reverse=True)
+    low_resolution_img = np.array(slide.read_region((0,0), len(slide.level_dimensions)-1, slide.level_dimensions[-1]))
+    plt.figure(figsize=(15, 15))
+    plt.imshow(low_resolution_img[:,:,:3])
+    for (i, j) in edge_index:
+        plt.plot([aggregated_location[i][0] * 7, aggregated_location[j][0]*7], [aggregated_location[i][1]*7, aggregated_location[j][1]*7], c='black')
     
+    plt.scatter(aggregated_location[:,0] * 7, aggregated_location[:,1]*7)
+
+def to_cluster_graph(data, image_file, y, gpu=None, threshold=20, evidence_n=200):
+    #clustering
+    data = data.numpy().T
+    with open(image_file, 'rb') as file:
+        location = pickle.load(file)
+    spatial_dist = euclidean_dist(location)
+    feature_dist = euclidean_dist(data)
+    combined_dist = feature_dist * spatial_dist
+    kmeans = KMeans(n_clusters=evidence_n).fit(combined_dist)
+    
+    # aggregate
+    aggregated_location = []
+    aggregated_feature = []
+    for i in range(evidence_n):
+        idx = np.where(kmeans.labels_==i)[0]
+        nodes_location = np.array(location)[idx]
+        nodes_feature = data[idx]
+        aggregated_location.append(nodes_location.mean(axis=0))
+        aggregated_feature.append(nodes_feature.mean(axis=0))
+    
+    aggregated_location = np.array(aggregated_location)
+    aggregated_feature = np.array(aggregated_feature)
+
+    dist = euclidean_dist(aggregated_location)
+    A = np.zeros_like(dist, dtype=np.int)
+    A [(dist < threshold)] = 1
+    A[range(evidence_n),range(evidence_n)] = 0
+
+    edge_index = []
+    for i in range(len(A)):
+        for j in range(len(A)):
+            if A[i, j]:
+                edge_index.append((i,j))
+    edge_index = torch.tensor(edge_index).t().contiguous().to(gpu)
+    
+    x = torch.tensor(aggregated_feature).to(gpu)
+    # x = score[all_idx].reshape(2 * evidence_n, 1)
+    graph_data = Data(x=x, edge_index=edge_index, y=torch.tensor(y, dtype=torch.float).to(gpu)) 
+
     return graph_data
+    #return graph_data, aggregated_location, edge_index.numpy().T
 
 def construct_graph_dataset(args, gpu):
     dataloader = CVDataLoader(args, gpu=gpu, feature_size=32)
@@ -180,10 +268,11 @@ def construct_graph_dataset(args, gpu):
     model.load(args.data_dir+'/model/model_0')
     dataset = []
     for i in dataloader.df.index:
+        print("\r","reading data input  %d/%d" % (i, len(dataloader.df)) , end='', flush=True)
         data = dataloader.X[i]
         image_file =  dataloader.df.loc[i, 'image_file']
-        dataset.append(to_PyG_graph(data, model, image_file, dataloader.df.loc[i, 'y2'], gpu, threshold=args.threshold, evidence_n=args.evidence_n, method='random'))
-    
+        # dataset.append(to_PyG_graph(data, image_file, dataloader.df.loc[i, 'y2'], model, gpu, threshold=args.threshold, evidence_n=args.evidence_n, method='random'))
+        dataset.append(to_PyG_graph(data, image_file, dataloader.df.loc[i, 'y2'], gpu, args.threshold, args.evidence_n))
     return dataset, dataloader.df
 
 def concat_result(dataloader, model, gpu):

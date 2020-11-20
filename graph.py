@@ -17,7 +17,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", default='data/sampling', help='determine the base dir of the dataset document')
-    parser.add_argument("--sample_n", default=1000, type=int, help='starting image index of preprocessing')
+    parser.add_argument("--sample_n", default=2000, type=int, help='starting image index of preprocessing')
     parser.add_argument("--evidence_n", default=500, type=int, help='how many top/bottom tiles to pick from')
     parser.add_argument("--repl_n", default=3, type=int, help='how many resampled replications')
     parser.add_argument("--image_split", action='store_true', help='if use image_split')
@@ -39,7 +39,8 @@ def main():
     n_manytimes = 8
 
     # caching
-    if os.path.exists(os.path.join(args.data_dir, 'graph', 'graph_dataset.pkl')) and os.path.exists(os.path.join(args.data_dir, 'graph', 'graph_df.pkl')):
+    if False:
+    # if os.path.exists(os.path.join(args.data_dir, 'graph', 'graph_dataset.pkl')) and os.path.exists(os.path.join(args.data_dir, 'graph', 'graph_df.pkl')):
         print("loading cached graph data")
         with open(os.path.join(args.data_dir, 'graph', 'graph_dataset.pkl'), 'rb') as file:
             dataset = pickle.load(file)
@@ -264,15 +265,16 @@ def to_cluster_graph(data, image_file, y, gpu=None, threshold=20, evidence_n=200
 def construct_graph_dataset(args, gpu):
     dataloader = CVDataLoader(args, gpu=gpu, feature_size=32)
     dataloader.df.reset_index(inplace=True)
-    model = Predictor(evidence_size=20, layers=(100, 50, 1), feature_size=32)
-    model.load(args.data_dir+'/model/model_0')
+    #model = Predictor(evidence_size=20, layers=(100, 50, 1), feature_size=32)
+    #model.load(args.data_dir+'/model/model_0')
     dataset = []
     for i in dataloader.df.index:
         print("\r","reading data input  %d/%d" % (i, len(dataloader.df)) , end='', flush=True)
         data = dataloader.X[i]
         image_file =  dataloader.df.loc[i, 'image_file']
         # dataset.append(to_PyG_graph(data, image_file, dataloader.df.loc[i, 'y2'], model, gpu, threshold=args.threshold, evidence_n=args.evidence_n, method='random'))
-        dataset.append(to_PyG_graph(data, image_file, dataloader.df.loc[i, 'y2'], gpu, args.threshold, args.evidence_n))
+        dataset.append(to_PyG_graph(data, image_file, dataloader.df.loc[i, 'y2'], None, gpu, args.threshold, args.evidence_n))
+    print("")
     return dataset, dataloader.df
 
 def concat_result(dataloader, model, gpu):

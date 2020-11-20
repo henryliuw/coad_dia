@@ -123,12 +123,12 @@ class CVDataLoader():
             useful_subset = pd.read_csv(csv_file)
             useful_subset['OS.time'].fillna(useful_subset['OS.time'].mean(), inplace=True)
             size = len(useful_subset)
-            for i in range(1, size):
+            for i in range(0, size):
                 for j in range(args.repl_n):
                     if args.repl_n == 0:
-                        X_this = np.load(args.data_dir+'/'+str(i)+'_features.txt')
+                        X_this = np.load(args.data_dir+'/tcga/'+str(i)+'_features.txt')
                     else:
-                        X_this_file = args.data_dir+'/'+str(i)+'_'+str(j)+'_features.npy'
+                        X_this_file = args.data_dir+'/tcga/'+str(i)+'_'+str(j)+'_features.npy'
                         if os.path.exists(X_this_file):
                             X_this = np.load(X_this_file, allow_pickle=True)
                         else:
@@ -141,13 +141,14 @@ class CVDataLoader():
                             X = X_this.reshape(1, args.sample_n, feature_size)
                         else:
                             X = np.r_[X, X_this.reshape(1, args.sample_n, feature_size)]
-                        image_file = args.data_dir+'/'+str(i)+'_'+str(j)+'_name.pkl'
+                        image_file = args.data_dir+'/tcga/'+str(i)+'_'+str(j)+'_name.pkl'
                         if df_new is None:
-                            df_new = pd.DataFrame({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file, 'stage_two':is_stage_two}, index=[0])
+                            df_new = pd.DataFrame({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file, 'stage_two':is_stage_two, "source":"tcga"}, index=[0])
                         else:
-                            df_new = df_new.append({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file, 'stage_two':is_stage_two}, ignore_index=True)
+                            df_new = df_new.append({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file, 'stage_two':is_stage_two, "source":"tcga"}, ignore_index=True)
                     print("\r","reading data input  %d/%d" % (i, size) , end='', flush=True)
-            
+            print("")
+            # read in changhai data
             changhai_csv = pd.read_csv('data/changhai.csv')
             X_changhai = []
             for i in changhai_csv.index:
@@ -155,10 +156,13 @@ class CVDataLoader():
                 X_changhai.append(np.load(file_dir).reshape(1,2000,32))
                 y = changhai_csv.loc[i, 'y']
                 image_file = file_dir.strip('features.npy') + 'name.pkl'
-                df_new = df_new.append({"y": y, "y2": y, "time": np.nan, 'sample_id': np.nan, 'image_file':image_file, 'stage_two':True}, ignore_index=True)
+                df_new = df_new.append({"y": y, "y2": y, "time": np.nan, 'sample_id': np.nan, 'image_file':image_file, 'stage_two':True, "source":"tcga"}, ignore_index=True)
             X_changhai = np.concatenate(X_changhai)
 
-            # retrieve X, Y
+            # TODO: read in TU data
+            pass
+
+            # TODO retrieve X, Y
             X = np.r_[X, X_changhai]
             X = X.transpose((0, 2, 1))
             try:
@@ -187,6 +191,10 @@ class CVDataLoader():
                 df_new = df_new[idx]
             else:
                 Y = df_new["y"].values
+        
+        X = X[2:]
+        df_new = df_new[2:]
+        Y = Y[2:]
 
         self.gpu = gpu
         self.X, self.Y = torch.Tensor(X), torch.Tensor(Y)
@@ -196,6 +204,10 @@ class CVDataLoader():
         self._init_fold()
         self.batch_size = args.batch_size
         self.stage_two = args.stage_two
+
+    def _retrieve_subset(self, source, stage_two):
+        # TODO
+        pass       
 
     def _init_fold(self):
         if self.image_split:

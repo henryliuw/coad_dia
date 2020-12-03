@@ -141,29 +141,56 @@ class CVDataLoader():
                             X = X_this.reshape(1, args.sample_n, feature_size)
                         else:
                             X = np.r_[X, X_this.reshape(1, args.sample_n, feature_size)]
-                        image_file = args.data_dir+'/tcga/'+str(i)+'_'+str(j)+'_name.pkl'
+                        loc_file = args.data_dir+'/tcga/'+str(i)+'_'+str(j)+'_name.pkl'
+                        image_path = os.path.join('/home/DiskB/tcga_coad_dia', useful_subset.loc[i, 'id'], useful_subset.loc[i, 'File me'])
                         if df_new is None:
-                            df_new = pd.DataFrame({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file, 'stage_two':is_stage_two, "source":"tcga"}, index=[0])
+                            df_new = pd.DataFrame({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_path, 'loc_file':loc_file, 'stage_two':is_stage_two, "source":"tcga"}, index=[0])
                         else:
-                            df_new = df_new.append({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_file, 'stage_two':is_stage_two, "source":"tcga"}, ignore_index=True)
+                            df_new = df_new.append({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_path, 'loc_file':loc_file, 'stage_two':is_stage_two, "source":"tcga"}, ignore_index=True)
                     print("\r","reading data input  %d/%d" % (i, size) , end='', flush=True)
             print("")
+
             # read in changhai data
-            changhai_csv = pd.read_csv('data/changhai.csv')
+            data_xls = pd.ExcelFile('data/information.xlsx')
+            df_changhai = data_xls.parse(sheet_name='changhai')
             X_changhai = []
-            for i in changhai_csv.index:
-                file_dir = os.path.join(args.data_dir, 'changhai' ,changhai_csv.loc[i, 'file'])
-                X_changhai.append(np.load(file_dir).reshape(1,2000,32))
-                y = changhai_csv.loc[i, 'y']
-                image_file = file_dir.strip('features.npy') + 'name.pkl'
-                df_new = df_new.append({"y": y, "y2": y, "time": np.nan, 'sample_id': np.nan, 'image_file':image_file, 'stage_two':True, "source":"tcga"}, ignore_index=True)
+            for i in df_changhai.index:
+                if df_changhai.loc[i, 'use']:
+                    image_file = os.path.join('/home/DiskB/COAD_additional_data/changhai', str(df_changhai.loc[i, 'filename'])+'.svs')
+                    file_dir = os.path.join(args.data_dir, 'changhai', '%d_0_features.npy' % i)
+                    if not os.path.exists(file_dir):
+                        continue
+                    X_changhai.append(np.load(file_dir).reshape(1,2000,32))
+                    y = (df_changhai.loc[i, 'outcome'] == 'well')
+                    loc_file = file_dir.strip('features.npy') + 'name.pkl'
+                    df_new = df_new.append({"y": y, "y2": y, "time": df_changhai.loc[i, 'OS.time'], 'sample_id': i, 'image_file':image_file, 'loc_file':loc_file, 'stage_two':True, "source":"changhai"}, ignore_index=True)
             X_changhai = np.concatenate(X_changhai)
 
-            # TODO: read in TU data
-            pass
+            # read in TU data
+            df_th = data_xls.parse(sheet_name='TumorHospital')
+            X_th = []
+            for i in df_th.index:
+                image_files = os.listdir('/home/DiskB/COAD_additional_data/TumorHospital')
+                if df_th.loc[i, 'use']:
+                    file_id = df_th.loc[i, 'filename'][2:]
+                    for image_file in image_files:
+                        if file_id in image_file:
+                            file_dir =  os.path.join(args.data_dir, 'TH', "%s_0_features.npy" % file_id)
+                            loc_file = file_dir.strip('features.npy') + 'name.pkl'
+                            if os.path.exists(file_dir):
+                                X_th.append(np.load(file_dir).reshape(1,2000,32))
+                                y = (df_th.loc[i, 'outcome'] == 'well')
+                                df_new = df_new.append({"y": y, "y2": y, "time": df_th.loc[i, 'OS.time'], 'sample_id': file_id, 'image_file':image_file, 'loc_file':loc_file, 'stage_two':True, "source":"TH"}, ignore_index=True)
+                    #file_dir = os.path.join(args.data_dir, 'TH', '%d_0_features.npy' % i)
+                    # if file exists???
+                    #X_changhai.append(np.load(file_dir).reshape(1,2000,32))
+                    #y = df_changhai.loc[i, 'y']
+                    #image_file = file_dir.strip('features.npy') + 'name.pkl'
+                    #df_new = df_new.append({"y": y, "y2": y, "time": df_changhai.loc[i, 'OS.time'], 'sample_id': i, 'image_file':image_file, 'stage_two':True, "source":"changhai"}, ignore_index=True)
+            #X_changhai = np.concatenate(X_changhai)
 
-            # TODO retrieve X, Y
-            X = np.r_[X, X_changhai]
+            
+            X = np.r_[X, X_changhai, X_th]
             X = X.transpose((0, 2, 1))
             try:
                 with open(X_cached_file,'wb') as file:
@@ -171,26 +198,36 @@ class CVDataLoader():
                 df_new.to_csv(df_cached_file)
             except Exception as e:
                 print(e)
-
+            
+        # retrieve X, Y
+        # always use stage_two
+        data_source = ['tcga']
         if args.changhai:
-            if args.stage_two:
-                idx = df_new['stage_two'] == True
-                X = X[idx]
-                Y = df_new[idx]["y2"].values
-                df_new = df_new[idx]
-            else:
-                Y = df_new["y"].values
-        else: # only original data
-            part1_max_idx = df_new[np.isnan(df_new['time'])].index.min()
-            df_new = df_new[:part1_max_idx]
-            X = X[:part1_max_idx]
-            if args.stage_two:
-                idx = df_new['stage_two'] == True
-                X = X[idx]
-                Y = df_new[idx]["y2"].values
-                df_new = df_new[idx]
-            else:
-                Y = df_new["y"].values
+            data_source.append('changhai')
+        if args.TH:
+            data_source.append('TH')
+
+        idx = df_new['source'].isin(data_source)
+        X = X[idx]
+        Y = df_new[idx]["y2"].values
+        df_new = df_new[idx]
+
+        # if args.changhai:
+        #     idx = df_new['stage_two'] == True
+        #     X = X[idx]
+        #     Y = df_new[idx]["y2"].values
+        #     df_new = df_new[idx]
+        # else: # only original data
+        #     part1_max_idx = df_new[np.isnan(df_new['time'])].index.min()
+        #     df_new = df_new[:part1_max_idx]
+        #     X = X[:part1_max_idx]
+        #     if args.stage_two:
+        #         idx = df_new['stage_two'] == True
+        #         X = X[idx]
+        #         Y = df_new[idx]["y2"].values
+        #         df_new = df_new[idx]
+        #     else:
+        #         Y = df_new["y"].values
         
         X = X[2:]
         df_new = df_new[2:]

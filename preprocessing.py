@@ -1,4 +1,8 @@
 import openslide
+import os
+#os.system('export PYTHONPATH=/home/DiskA/liuhongyi/coad_dia/kfbreader:$PYTHONPATH')
+#os.system('export LD_LIBRARY_PATH=~/anaconda3/lib:/home/DiskA/liuhongyi/coad_dia/kfbreader:$LD_LIBRARY_PATH')
+from kfbreader import kfbReader
 import numpy as np
 import matplotlib.image
 from matplotlib import pyplot as plt
@@ -19,7 +23,6 @@ import spams
 import utils
 from vahadane import vahadane
 from sklearn.manifold import TSNE
-import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import warnings
 warnings.filterwarnings('ignore')  # possibly harmful code
@@ -215,14 +218,26 @@ def data_augmentation_transform(img):
     return img
 
 def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ratio=0.3, evaluate=True, source='tcga', extractor=""):
-    slide = openslide.OpenSlide(image_path)
+    if '.svs' in image_path:
+        slide = openslide.OpenSlide(image_path)
     
-    level_downsamples = sorted([round(i) for i in slide.level_downsamples], reverse=True)
-    if 32 not in level_downsamples and 64 not in level_downsamples:
-        print('File %s does not have downsample levels larger than or equal to 32' % image_path)
-        return None
-
-    low_resolution_img = np.array(slide.read_region((0,0), len(slide.level_dimensions)-1, slide.level_dimensions[-1]))
+        level_downsamples = sorted([round(i) for i in slide.level_downsamples], reverse=True)
+        if 32 not in level_downsamples and 64 not in level_downsamples:
+            print('File %s does not have downsample levels larger than or equal to 32' % image_path)
+            return None
+        low_resolution_img = np.array(slide.read_region((0,0), len(slide.level_dimensions)-1, slide.level_dimensions[-1]))
+    elif '.kfb' in image_path:
+        read0 = kfbReader.reader()
+        read0.ReadInfo(image_path, 1, False)
+        low_resolution_img = read0.ReadRoi(0,0, read0.getWidth() , read0.getHeight() , scale=1)
+        read = kfbReader.reader()
+        read.ReadInfo(image_path, 32, False)
+        
+    # print(level_downsamples, slide.level_dimensions)
+    # print(slide.level_dimensions[0][0] * slide.level_dimensions[0][1])
+    # print(slide.level_dimensions[-1][0] * slide.level_dimensions[-1][1])
+    # return 
+    
     width, height = low_resolution_img.shape[0]//7, low_resolution_img.shape[1]//7
     mask_ij = np.zeros((width, height), np.bool_)
     Otsu_mask = Otsu_threshold(low_resolution_img[:,:,:3], False)
@@ -300,13 +315,16 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
 
         pic_name = '%d-%d' % (i, j)
         # read
-        if 32 in level_downsamples:
-            idx_32 = level_downsamples.index(32)
-            img = np.array(slide.read_region((224 * i * 2 ** idx_32, 224 * j * 2**idx_32), idx_32, (224, 224)))
-        elif 64 in level_downsamples:
-            idx_64 = level_downsamples.index(64)
-            img_PIL = slide.read_region((224 * 2 * i * 2 ** idx_64, 224 * 2 * j * 2**idx_64), idx_64, (224 * 2, 224 * 2))
-            img =  np.asarray(img_PIL.resize((224, 224))) # resize
+        if '.svs' in image_path:
+            if 32 in level_downsamples:
+                idx_32 = level_downsamples.index(32)
+                img = np.array(slide.read_region((224 * i * 2 ** idx_32, 224 * j * 2**idx_32), idx_32, (224, 224)))
+            elif 64 in level_downsamples:
+                idx_64 = level_downsamples.index(64)
+                img_PIL = slide.read_region((224 * 2 * i * 2 ** idx_64, 224 * 2 * j * 2**idx_64), idx_64, (224 * 2, 224 * 2))
+                img =  np.asarray(img_PIL.resize((224, 224))) # resize
+        elif '.kfb' in image_path:
+            img = read.ReadRoi(224 * i, 224 * j, 224, 224, scale=32)
         # feature extraction
         try:
             img = img[:, :, :3]
@@ -348,7 +366,7 @@ def test():
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input_dir", default='/home/DiskB/tcga_coad_dia'  ,help='determine the base dir of the dataset document')
+    #parser.add_argument("--input_dir", default='/home/DiskB/tcga_coad_dia'  ,help='determine the base dir of the dataset document')
     parser.add_argument("--output_dir", default='preprocessed_data' ,help='determine the output dir of preprocessed data')
     parser.add_argument("--start_image", default=0 , type=int, help='starting image index of preprocessing (for continuing unexpected break)')
     parser.add_argument("--sample_n", default=1000, type=int, help='sample size of each image')
@@ -358,12 +376,12 @@ def main():
     parser.add_argument("--TH", action='store_true')
     args = parser.parse_args()
     # preprocessing
-    if not args.changhai:
+    if not args.changhai and not args.TH:
         useful_subset = pd.read_csv('data/useful_subset.csv')
         for i in useful_subset.index:
             if i < args.start_image:
                 continue
-            image_path = os.path.join(args.input_dir, useful_subset.loc[i, 'id'], useful_subset.loc[i, 'File me'])
+            image_path = os.path.join('/home/DiskB/tcga_coad_dia', useful_subset.loc[i, 'id'], useful_subset.loc[i, 'File me'])
             name = str(i)
             print('%s\tstarting image %d' % (time.strftime('%Y.%m.%d.%H:%M:%S',time.localtime(time.time())), i))
             read_samples(image_path,  args.output_dir, name, sample_size=args.sample_n, repl_n=args.repl_n, source='tcga', extractor=args.extractor)
@@ -372,7 +390,7 @@ def main():
         df = data_xls.parse(sheet_name='changhai')
         for i in df.index:
             if df.loc[i, 'use']:
-                image_path = os.path.join('/home/DiskB/coad_additional_data/changhai', str(df.loc[i, 'filename'])+'.svs')
+                image_path = os.path.join('/home/DiskB/COAD_additional_data/changhai', str(df.loc[i, 'filename'])+'.svs')
                 read_samples(image_path,  args.output_dir, str(i), sample_size=args.sample_n, repl_n=args.repl_n, source='changhai', extractor=args.extractor)
         #for i in sorted(os.listdir('/home/DiskB/tcga_coad_dia/changhai')):
         #    skip = ['6258' ,'6268', '6250', '6263', '6269', '6247', '6277', '6273', '6280', '6289', '6253', '6245', '6283', '6294']
@@ -381,12 +399,18 @@ def main():
         #    image_path = os.path.join('/home/DiskB/tcga_coad_dia/changhai', i)
         #    read_samples(image_path,  args.output_dir, i.split('.')[0], sample_size=args.sample_n, repl_n=args.repl_n, changhai=True, extractor=args.extractor)
     elif not args.changhai and args.TH:
+        data_xls = pd.ExcelFile('data/information.xlsx')
+        df = data_xls.parse(sheet_name='TumorHospital')
         for i in df.index:
             if df.loc[i, 'use']:
                 file_id = df.loc[i, 'filename'][2:]
-                image_files = os.listdir('/home/DiskB/coad_additional_data/TumorHospital')
+                #if '14-13101' not in file_id: # debugging
+                #    continue
+                image_files = os.listdir('/home/DiskB/COAD_additional_data/TumorHospital')
                 for image_file in image_files:
-                    if file_id in image_file and '.svs' in image_file:
+                    if file_id in image_file and '.kfb' in image_file:
+                        image_path = os.path.join('/home/DiskB/COAD_additional_data/TumorHospital', image_file)
+                        #print(image_path)
                         read_samples(image_path, args.output_dir, file_id, sample_size=args.sample_n, repl_n=args.repl_n, source='TH', extractor=args.extractor)
         
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--stage_two", action='store_true', help='if only use stage two patients')
     parser.add_argument("--threshold", default=25, type=float, help='threshold')
     parser.add_argument("--changhai", action='store_true', help='if use additional data')
+    parser.add_argument("--TH", action='store_true')
     args = parser.parse_args()
 
     gpu = "cuda:0"
@@ -157,7 +158,7 @@ def main():
     print('CV-acc:%.3f CV-auc:%.3f CV-c-index:%.3f f1(neg):%.3f' % (sum(acc_folds) / total_count, sum(auc_folds) / total_count, sum(c_index_folds)  / total_count,  sum(f1_folds)  / total_count))
 
 
-def to_PyG_graph(data, image_file, y, model='None', gpu=None, threshold=80, evidence_n=20, method='random',return_edge=False):
+def to_PyG_graph(data, loc_file, y, model='None', gpu=None, threshold=80, evidence_n=20, method='random',return_edge=False):
     
     if method=='score':
         evidence_n *= 2
@@ -168,7 +169,7 @@ def to_PyG_graph(data, image_file, y, model='None', gpu=None, threshold=80, evid
     elif method=='random':
         all_idx = random.sample(range(2000), evidence_n * 2)
 
-    with open(image_file, 'rb') as file:
+    with open(loc_file, 'rb') as file:
         location = pickle.load(file)
     location_mat = np.array(location)[all_idx]
 
@@ -271,9 +272,9 @@ def construct_graph_dataset(args, gpu):
     for i in dataloader.df.index:
         print("\r","reading data input  %d/%d" % (i, len(dataloader.df)) , end='', flush=True)
         data = dataloader.X[i]
-        image_file =  dataloader.df.loc[i, 'image_file']
+        loc_file =  dataloader.df.loc[i, 'loc_file']
         # dataset.append(to_PyG_graph(data, image_file, dataloader.df.loc[i, 'y2'], model, gpu, threshold=args.threshold, evidence_n=args.evidence_n, method='random'))
-        dataset.append(to_PyG_graph(data, image_file, dataloader.df.loc[i, 'y2'], None, gpu, args.threshold, args.evidence_n))
+        dataset.append(to_PyG_graph(data, loc_file, dataloader.df.loc[i, 'y2'], None, gpu, args.threshold, args.evidence_n))
     print("")
     return dataset, dataloader.df
 

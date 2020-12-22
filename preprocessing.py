@@ -279,6 +279,7 @@ def main():
         df = data_xls.parse(sheet_name='TumorHospital')
         for i in df.index:
             if df.loc[i, 'use']:
+                file_id = df.loc[i, 'filename'][2:]
                 image_files = os.listdir('/home/DiskB/COAD_additional_data/TumorHospital')
                 for image_file in image_files:
                     if file_id in image_file and '.kfb' in image_file:

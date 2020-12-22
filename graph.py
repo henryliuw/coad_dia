@@ -1,4 +1,4 @@
-from module import Predictor, CVDataLoader, GNN, CrossValidationSplitter
+from module import DatasetLoader, GNN, CrossValidationSplitter
 import pickle
 import numpy as np
 import torch
@@ -16,19 +16,17 @@ from sklearn.metrics.pairwise import euclidean_distances as euclidean_dist
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_dir", default='data/sampling', help='determine the base dir of the dataset document')
+    parser.add_argument("--data_dir", default='data/new_2000', help='determine the base dir of the dataset document')
     parser.add_argument("--sample_n", default=2000, type=int, help='starting image index of preprocessing')
     parser.add_argument("--evidence_n", default=500, type=int, help='how many top/bottom tiles to pick from')
-    parser.add_argument("--repl_n", default=3, type=int, help='how many resampled replications')
     parser.add_argument("--image_split", action='store_true', help='if use image_split')
-    parser.add_argument("--batch_size", default=100, type=int, help="batch size")
-    parser.add_argument("--stage_two", action='store_true', help='if only use stage two patients')
+    parser.add_argument("--batch_size", default=30, type=int, help="batch size")
     parser.add_argument("--threshold", default=25, type=float, help='threshold')
     parser.add_argument("--changhai", action='store_true', help='if use additional data')
     parser.add_argument("--TH", action='store_true')
     args = parser.parse_args()
 
-    gpu = "cuda:0"
+    gpu = "cuda:1"
     n_epoch = 80
     acc_folds = []
     auc_folds = []
@@ -40,7 +38,7 @@ def main():
     n_manytimes = 8
 
     # caching
-    if False:
+    if True:
     # if os.path.exists(os.path.join(args.data_dir, 'graph', 'graph_dataset.pkl')) and os.path.exists(os.path.join(args.data_dir, 'graph', 'graph_df.pkl')):
         print("loading cached graph data")
         with open(os.path.join(args.data_dir, 'graph', 'graph_dataset.pkl'), 'rb') as file:
@@ -93,10 +91,7 @@ def main():
                 #loss_test = nn.functional.mse_loss(result_test, Y_test)
                 acc_train, acc_test = accuracy(y_pred_train, y_train), accuracy(y_pred_test, y_test)
                 auc_train, auc_test = auc(y_pred_train, y_train),  auc(y_pred_test, y_test)
-                if args.changhai:
-                    c_index_train, c_index_test = 0, 0
-                else:
-                    c_index_train, c_index_test = c_index(y_pred_train, train_df), c_index(y_pred_test, test_df)
+                c_index_train, c_index_test = c_index(y_pred_train, train_df), c_index(y_pred_test, test_df)
                 f1_train, f1_test = f1(y_pred_train, y_train, negative = True),  f1(y_pred_test, y_test, negative = True)
                 if epoch % 5 == 0:
                     print(f'Epoch:{epoch:03d} Loss:{loss_train:.3f}/{loss_test:.3f} ACC:{acc_train:.3f}/{acc_test:.3f} AUC:{auc_train:.3f}/{auc_test:.3f} CI:{c_index_train:.3f}/{c_index_test:.3f} f1(neg):{f1_train:.3f}/{f1_test:.3f}')
@@ -136,15 +131,11 @@ def main():
                     pass
                     #print('wtf')
                 if early_stop_count > 3 and epoch>25:
-                    if args.stage_two:
-                        if auc_fold>0.55 and acc_fold > 0.55:
-                            print('early stop at epoch %d' % epoch)
-                            if acc_fold > 0.75 and auc_fold > 0.75:
-                                model.load(args.data_dir + "/model/graph_%d" % model_count)
-                                model_count += 1
-                            break
-                    elif early_stop_count > 3:
+                    if auc_fold>0.6 and acc_fold > 0.6:
                         print('early stop at epoch %d' % epoch)
+                        if acc_fold > 0.75 and auc_fold > 0.75:
+                            model.load(args.data_dir + "/model/graph_%d" % model_count)
+                            model_count += 1
                         break
         
         acc_folds.append(acc_fold)
@@ -221,6 +212,7 @@ def plot_graph(loc_file, aggregated_location, edge_index, type='tcga'):
     
     plt.scatter(aggregated_location[:,0] * 7, aggregated_location[:,1]*7)
 
+'''
 def to_cluster_graph(data, image_file, y, gpu=None, threshold=20, evidence_n=200):
     #clustering
     data = data.numpy().T
@@ -262,15 +254,16 @@ def to_cluster_graph(data, image_file, y, gpu=None, threshold=20, evidence_n=200
 
     return graph_data
     #return graph_data, aggregated_location, edge_index.numpy().T
+'''
 
 def construct_graph_dataset(args, gpu):
-    dataloader = CVDataLoader(args, gpu=gpu, feature_size=32)
+    dataloader = DatasetLoader(args, gpu=gpu, feature_size=32)
     dataloader.df.reset_index(inplace=True)
     #model = Predictor(evidence_size=20, layers=(100, 50, 1), feature_size=32)
     #model.load(args.data_dir+'/model/model_0')
     dataset = []
     for i in dataloader.df.index:
-        print("\r","reading data input  %d/%d" % (i, len(dataloader.df)) , end='', flush=True)
+        print("\r","constructing graph representation %d/%d" % (i, len(dataloader.df)) , end='', flush=True)
         data = dataloader.X[i]
         loc_file =  dataloader.df.loc[i, 'loc_file']
         # dataset.append(to_PyG_graph(data, image_file, dataloader.df.loc[i, 'y2'], model, gpu, threshold=args.threshold, evidence_n=args.evidence_n, method='random'))

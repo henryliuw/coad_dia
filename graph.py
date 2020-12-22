@@ -21,7 +21,7 @@ def main():
     parser.add_argument("--evidence_n", default=500, type=int, help='how many top/bottom tiles to pick from')
     parser.add_argument("--repl_n", default=3, type=int, help='how many resampled replications')
     parser.add_argument("--image_split", action='store_true', help='if use image_split')
-    parser.add_argument("--batch_size", default=100, type=int, help="batch size")
+    parser.add_argument("--batch_size", default=200, type=int, help="batch size")
     parser.add_argument("--stage_two", action='store_true', help='if only use stage two patients')
     parser.add_argument("--threshold", default=25, type=float, help='threshold')
     parser.add_argument("--changhai", action='store_true', help='if use additional data')
@@ -58,7 +58,7 @@ def main():
     
     splitter = CrossValidationSplitter(dataset, df, n=5, n_manytimes=n_manytimes)
     # criterion = torch.nn.CrossEntropyLoss()
-    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.5))
+    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.4))
     fold_num=0
     if not os.path.isdir(os.path.join(args.data_dir, 'model')):
         os.mkdir(os.path.join(args.data_dir, 'model'))
@@ -93,7 +93,7 @@ def main():
                 #loss_test = nn.functional.mse_loss(result_test, Y_test)
                 acc_train, acc_test = accuracy(y_pred_train, y_train), accuracy(y_pred_test, y_test)
                 auc_train, auc_test = auc(y_pred_train, y_train),  auc(y_pred_test, y_test)
-                if args.changhai:
+                if False:
                     c_index_train, c_index_test = 0, 0
                 else:
                     c_index_train, c_index_test = c_index(y_pred_train, train_df), c_index(y_pred_test, test_df)
@@ -274,7 +274,8 @@ def construct_graph_dataset(args, gpu):
         data = dataloader.X[i]
         loc_file =  dataloader.df.loc[i, 'loc_file']
         # dataset.append(to_PyG_graph(data, image_file, dataloader.df.loc[i, 'y2'], model, gpu, threshold=args.threshold, evidence_n=args.evidence_n, method='random'))
-        dataset.append(to_PyG_graph(data, loc_file, dataloader.df.loc[i, 'y2'], None, gpu, args.threshold, args.evidence_n))
+        # dataset.append(to_PyG_graph(data, loc_file, dataloader.df.loc[i, 'y2'], None, gpu, args.threshold, args.evidence_n))
+        dataset.append(to_cluster_graph(data, loc_file, dataloader.df.loc[i, 'y2'], gpu, args.threshold, args.evidence_n))
     print("")
     return dataset, dataloader.df
 

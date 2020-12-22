@@ -124,30 +124,31 @@ class CVDataLoader():
             useful_subset['OS.time'].fillna(useful_subset['OS.time'].mean(), inplace=True)
             size = len(useful_subset)
             for i in range(0, size):
-                for j in range(args.repl_n):
-                    if args.repl_n == 0:
-                        X_this = np.load(args.data_dir+'/tcga/'+str(i)+'_features.txt')
-                    else:
-                        X_this_file = args.data_dir+'/tcga/'+str(i)+'_'+str(j)+'_features.npy'
-                        if os.path.exists(X_this_file):
-                            X_this = np.load(X_this_file, allow_pickle=True)
+                if useful_subset.loc[i, "stage"] == 'Stage II':   
+                    for j in range(args.repl_n):
+                        if args.repl_n == 0:
+                            X_this = np.load(args.data_dir+'/tcga/'+str(i)+'_features.txt')
                         else:
-                            continue
-                    Y_this = useful_subset.loc[i, 'outcome'] == 'good'
-                    Y_this_stage_two = useful_subset.loc[i, 'outcome2'] == 'good'
-                    is_stage_two = useful_subset.loc[i, "stage"] == 'Stage II'
-                    if len(X_this)==args.sample_n:
-                        if X is None:
-                            X = X_this.reshape(1, args.sample_n, feature_size)
-                        else:
-                            X = np.r_[X, X_this.reshape(1, args.sample_n, feature_size)]
-                        loc_file = args.data_dir+'/tcga/'+str(i)+'_'+str(j)+'_name.pkl'
-                        image_path = os.path.join('/home/DiskB/tcga_coad_dia', useful_subset.loc[i, 'id'], useful_subset.loc[i, 'File me'])
-                        if df_new is None:
-                            df_new = pd.DataFrame({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_path, 'loc_file':loc_file, 'stage_two':is_stage_two, "source":"tcga"}, index=[0])
-                        else:
-                            df_new = df_new.append({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_path, 'loc_file':loc_file, 'stage_two':is_stage_two, "source":"tcga"}, ignore_index=True)
-                    print("\r","reading data input  %d/%d" % (i, size) , end='', flush=True)
+                            X_this_file = args.data_dir+'/tcga/'+str(i)+'_'+str(j)+'_features.npy'
+                            if os.path.exists(X_this_file):
+                                X_this = np.load(X_this_file, allow_pickle=True)
+                            else:
+                                continue
+                        Y_this = useful_subset.loc[i, 'outcome'] == 'good'
+                        Y_this_stage_two = useful_subset.loc[i, 'outcome2'] == 'good'
+                        is_stage_two = useful_subset.loc[i, "stage"] == 'Stage II'
+                        if len(X_this)==args.sample_n:
+                            if X is None:
+                                X = X_this.reshape(1, args.sample_n, feature_size)
+                            else:
+                                X = np.r_[X, X_this.reshape(1, args.sample_n, feature_size)]
+                            loc_file = args.data_dir+'/tcga/'+str(i)+'_'+str(j)+'_name.pkl'
+                            image_path = os.path.join('/home/DiskB/tcga_coad_dia', useful_subset.loc[i, 'id'], useful_subset.loc[i, 'File me'])
+                            if df_new is None:
+                                df_new = pd.DataFrame({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_path, 'loc_file':loc_file, 'stage_two':is_stage_two, "source":"tcga"}, index=[0])
+                            else:
+                                df_new = df_new.append({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_path, 'loc_file':loc_file, 'stage_two':is_stage_two, "source":"tcga"}, ignore_index=True)
+                        print("\r","reading data input  %d/%d" % (i, size) , end='', flush=True)
             print("")
 
             # read in changhai data
@@ -181,6 +182,7 @@ class CVDataLoader():
                                 X_th.append(np.load(file_dir).reshape(1,2000,32))
                                 y = (df_th.loc[i, 'outcome'] == 'well')
                                 df_new = df_new.append({"y": y, "y2": y, "time": df_th.loc[i, 'OS.time'], 'sample_id': file_id, 'image_file':image_file, 'loc_file':loc_file, 'stage_two':True, "source":"TH"}, ignore_index=True)
+            X_th = np.concatenate(X_th)
                     #file_dir = os.path.join(args.data_dir, 'TH', '%d_0_features.npy' % i)
                     # if file exists???
                     #X_changhai.append(np.load(file_dir).reshape(1,2000,32))

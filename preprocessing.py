@@ -1,7 +1,8 @@
 import openslide
 import os
-#os.system('export PYTHONPATH=/home/DiskA/liuhongyi/coad_dia/kfbreader:$PYTHONPATH')
-#os.system('export LD_LIBRARY_PATH=~/anaconda3/lib:/home/DiskA/liuhongyi/coad_dia/kfbreader:$LD_LIBRARY_PATH')
+# if line 6 encounter error run following cmd in bash:
+#export PYTHONPATH=/home/DiskA/liuhongyi/coad_dia/kfbreader:$PYTHONPATH
+#export LD_LIBRARY_PATH=~/anaconda3/lib:/home/DiskA/liuhongyi/coad_dia/kfbreader:$LD_LIBRARY_PATH
 from kfbreader import kfbReader
 import numpy as np
 import matplotlib.image
@@ -23,7 +24,7 @@ import spams
 import utils
 from vahadane import vahadane
 from sklearn.manifold import TSNE
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 import warnings
 warnings.filterwarnings('ignore')  # possibly harmful code
 
@@ -47,100 +48,6 @@ def Otsu_threshold(img, verbose=False):
         ax1.set_title("Otsu thresholding")
         fig.tight_layout()
     return th
-
-def normalizeStaining(img, saveFile=None, Io=240, alpha=1, beta=0.15):
-    ''' Normalize staining appearence of H&E stained images
-    
-    Example use:
-        see test.py
-        
-    Input:
-        I: RGB input image
-        Io: (optional) transmitted light intensity
-        
-    Output:
-        Inorm: normalized image
-        H: hematoxylin image
-        E: eosin image
-    
-    Reference: 
-        A method for normalizing histology slides for quantitative analysis. M.
-        Macenko et al., ISBI 2009
-    '''
-             
-    HERef = np.array([[0.5626, 0.2159],
-                      [0.7201, 0.8012],
-                      [0.4062, 0.5581]])
-        
-    maxCRef = np.array([1.9705, 1.0308])
-    
-    # define height and width of image
-    h, w, c = img.shape
-    
-    # reshape image
-    img = img.reshape((-1,3))
-
-    # calculate optical density
-    OD = -np.log((img.astype(np.float)+1)/Io)
-    
-    # remove transparent pixels
-    ODhat = OD[~np.any(OD<beta, axis=1)]
-        
-    # compute eigenvectors of the covariance between each channel of RGB
-    eigvals, eigvecs = np.linalg.eigh(np.cov(ODhat.T))
-    
-    #eigvecs *= -1
-    
-    #project on the plane spanned by the eigenvectors corresponding to the two 
-    # largest eigenvalues, which is sorted by ascending value
-    That = ODhat.dot(eigvecs[:,1:3])
-    
-    phi = np.arctan2(That[:,1],That[:,0])
-    
-    minPhi = np.percentile(phi, alpha)
-    maxPhi = np.percentile(phi, 100-alpha)
-    
-    vMin = eigvecs[:,1:3].dot(np.array([(np.cos(minPhi), np.sin(minPhi))]).T)
-    vMax = eigvecs[:,1:3].dot(np.array([(np.cos(maxPhi), np.sin(maxPhi))]).T)
-    
-    # a heuristic to make the vector corresponding to hematoxylin first and the 
-    # one corresponding to eosin second
-    if vMin[0] > vMax[0]:
-        HE = np.array((vMin[:,0], vMax[:,0])).T
-    else:
-        HE = np.array((vMax[:,0], vMin[:,0])).T
-    
-    # rows correspond to channels (RGB), columns to OD values
-    Y = np.reshape(OD, (-1, 3)).T
-    
-    # determine concentrations of the individual stains
-    C = np.linalg.lstsq(HE,Y, rcond=None)[0]
-    
-    # normalize stain concentrations
-    maxC = np.array([np.percentile(C[0,:], 99), np.percentile(C[1,:],99)])
-    tmp = np.divide(maxC,maxCRef)
-    C2 = np.divide(C,tmp[:, np.newaxis])
-    
-    # recreate the image using reference mixing matrix
-    Inorm = np.multiply(Io, np.exp(-HERef.dot(C2)))
-    Inorm[Inorm>255] = 254
-    Inorm = np.reshape(Inorm.T, (h, w, 3)).astype(np.uint8)  
-    
-    # unmix hematoxylin and eosin
-    H = np.multiply(Io, np.exp(np.expand_dims(-HERef[:,0], axis=1).dot(np.expand_dims(C2[0,:], axis=0))))
-    H[H>255] = 254
-    H = np.reshape(H.T, (h, w, 3)).astype(np.uint8)
-    
-    E = np.multiply(Io, np.exp(np.expand_dims(-HERef[:,1], axis=1).dot(np.expand_dims(C2[1,:], axis=0))))
-    E[E>255] = 254
-    E = np.reshape(E.T, (h, w, 3)).astype(np.uint8)
-    
-    if saveFile is not None:
-        Image.fromarray(Inorm).save(saveFile+'.png')
-        Image.fromarray(H).save(saveFile+'_H.png')
-        Image.fromarray(E).save(saveFile+'_E.png')
-
-    return Inorm, H, E
 
 def SPCN(source, verbose=False):
     if not hasattr(SPCN, 'Wt') or not hasattr(SPCN, 'Ht'):
@@ -189,22 +96,6 @@ def features_extraction(img, feature_extractor):
     features = feature_extractor(img_transformed).view(1, -1).detach().numpy()
     return features
 
-def read_image(slide, slide_count):
-    level_downsamples = sorted([round(i) for i in slide.level_downsamples], reverse=True)
-    if 32 in level_downsamples:
-        idx_32 = level_downsamples.index(32)
-        for i in range(slide.level_dimensions[idx_32][0]//(224 * slide_count)):
-            img = np.array(slide.read_region((224 * slide_count * i * 2**idx_32,0), idx_32, (224 * slide_count, slide.level_dimensions[idx_32][1])))
-            yield img, i
-    elif 64 in level_downsamples:
-        idx_64 = level_downsamples.index(64)
-        for i in range(6, slide.level_dimensions[idx_64][0]//(224 * slide_count)):
-            img_PIL = slide.read_region((224 * 2 * slide_count * i * 2**idx_64,0), idx_64, (224 * 2 * slide_count, slide.level_dimensions[idx_64][1]))
-            img_resized =  np.asarray(img_PIL.resize((img_PIL.size[0]//2, img_PIL.size[1]//2)))
-            del img_PIL
-            gc.collect()
-            yield img_resized, i
-
 def data_augmentation_transform(img):
     vertical_flip = random.choice([0,1])
     horizontal_flip= random.choice([0, 1])
@@ -217,7 +108,7 @@ def data_augmentation_transform(img):
     img = np.rot90(img, rotate_seed)    
     return img
 
-def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ratio=0.3, evaluate=True, source='tcga', extractor=""):
+def read_samples(image_path, save_dir, name, sample_size, threshold_ratio=0.3, evaluate=True, source='tcga', extractor=""):
     if '.svs' in image_path:
         slide = openslide.OpenSlide(image_path)
     
@@ -273,11 +164,10 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
     name_list = []
     idx = 0
     count = 0
-    repl_i = 0
     if not os.path.isdir(save_dir): # short
         os.mkdir(save_dir)
     save_dir = os.path.join(save_dir, source)
-    name_i = name+'_'+str(repl_i)
+    name_i = name
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
     if evaluate:
@@ -288,29 +178,11 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
 
     print('sampling %d tiles from image %s' % (sample_size, name))
     while 1:
-        # check for stop condition first
-        # successful exit branch
-        if count == sample_size or idx == len(tile_list):   
-            with open(os.path.join(save_dir,name_i+'_name.pkl'),'wb') as file:
-                pickle.dump(name_list, file)
-            np.save(os.path.join(save_dir, name_i + '_features.npy'), feature_vec)
-            feature_vec = None
-            name_list = []
-            count = 0
-            repl_i += 1
-            name_i = name+'_'+str(repl_i)
-            #if not os.path.isdir(os.path.join(save_dir, name_i)):
-            #    os.mkdir(os.path.join(save_dir, name_i))
-            #if not os.path.isdir(os.path.join(save_dir, name_i,'discarded')):
-            #    os.mkdir(os.path.join(save_dir, name_i, 'discarded'))
-            print('replica %d sampling succeed' % repl_i)
-            if repl_i == repl_n:
-                break
         # get idx
         try:
             j, i = tile_list[idx]
         except IndexError: # unsuccessful exit branch
-            print('image %s does not have enough tiles for sampling for replica %d' % (name, repl_i))
+            print('image %s does not have enough tiles for sampling' % name)
             break
 
         pic_name = '%d-%d' % (i, j)
@@ -348,6 +220,22 @@ def read_samples(image_path, save_dir, name, sample_size, repl_n=1, threshold_ra
                 matplotlib.image.imsave(save_dir+'/'+name_i+'/discarded/'+pic_name+'.png', img)
             idx+=1
             continue
+                # check for stop condition first
+        # successful exit branch
+        if count == sample_size or idx == len(tile_list):
+            # save files
+            with open(os.path.join(save_dir,name_i+'_name.pkl'),'wb') as file:
+                pickle.dump(name_list, file)
+            np.save(os.path.join(save_dir, name_i + '_features.npy'), feature_vec)
+            feature_vec = None
+            name_list = []
+            count = 0
+            #if not os.path.isdir(os.path.join(save_dir, name_i)):
+            #    os.mkdir(os.path.join(save_dir, name_i))
+            #if not os.path.isdir(os.path.join(save_dir, name_i,'discarded')):
+            #    os.mkdir(os.path.join(save_dir, name_i, 'discarded'))
+            print('sampling preprocessing succeed')
+            break
     if evaluate:
         return mask_ij, low_resolution_img, feature_vec, name_list
     else:
@@ -366,52 +254,36 @@ def test():
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    #parser.add_argument("--input_dir", default='/home/DiskB/tcga_coad_dia'  ,help='determine the base dir of the dataset document')
-    parser.add_argument("--output_dir", default='preprocessed_data' ,help='determine the output dir of preprocessed data')
-    parser.add_argument("--start_image", default=0 , type=int, help='starting image index of preprocessing (for continuing unexpected break)')
-    parser.add_argument("--sample_n", default=1000, type=int, help='sample size of each image')
-    parser.add_argument("--repl_n", default=1, type=int, help='replication of each image')
-    parser.add_argument("--extractor", default="", help='name to load extractor')
-    parser.add_argument("--changhai", action='store_true')
-    parser.add_argument("--TH", action='store_true')
+    parser.add_argument("--output_dir", default='data/test' ,help='determine the output dir of preprocessed data')
+    parser.add_argument("--sample_n", default=2000, type=int, help='sample size of each image')
+    parser.add_argument("--source", default='TCGA', help='one of TCGA/changhai/TH')
+    parser.add_argument("--extractor", default="f32", help='name to load extractor')
     args = parser.parse_args()
     # preprocessing
-    if not args.changhai and not args.TH:
+    if args.source=='TCGA':
         useful_subset = pd.read_csv('data/useful_subset.csv')
         for i in useful_subset.index:
-            if i < args.start_image:
-                continue
             image_path = os.path.join('/home/DiskB/tcga_coad_dia', useful_subset.loc[i, 'id'], useful_subset.loc[i, 'File me'])
             name = str(i)
             print('%s\tstarting image %d' % (time.strftime('%Y.%m.%d.%H:%M:%S',time.localtime(time.time())), i))
-            read_samples(image_path,  args.output_dir, name, sample_size=args.sample_n, repl_n=args.repl_n, source='tcga', extractor=args.extractor)
-    elif args.changhai and not args.TH:
+            read_samples(image_path,  args.output_dir, name, sample_size=args.sample_n, source='tcga', extractor=args.extractor)
+    elif args.source=='changhai':
         data_xls = pd.ExcelFile('data/information.xlsx')
         df = data_xls.parse(sheet_name='changhai')
         for i in df.index:
             if df.loc[i, 'use']:
                 image_path = os.path.join('/home/DiskB/COAD_additional_data/changhai', str(df.loc[i, 'filename'])+'.svs')
-                read_samples(image_path,  args.output_dir, str(i), sample_size=args.sample_n, repl_n=args.repl_n, source='changhai', extractor=args.extractor)
-        #for i in sorted(os.listdir('/home/DiskB/tcga_coad_dia/changhai')):
-        #    skip = ['6258' ,'6268', '6250', '6263', '6269', '6247', '6277', '6273', '6280', '6289', '6253', '6245', '6283', '6294']
-        #    if i.strip('.svs') in skip:
-        #        continue
-        #    image_path = os.path.join('/home/DiskB/tcga_coad_dia/changhai', i)
-        #    read_samples(image_path,  args.output_dir, i.split('.')[0], sample_size=args.sample_n, repl_n=args.repl_n, changhai=True, extractor=args.extractor)
-    elif not args.changhai and args.TH:
+                read_samples(image_path,  args.output_dir, str(i), sample_size=args.sample_n, source='changhai', extractor=args.extractor)
+    elif args.source=='TH':
         data_xls = pd.ExcelFile('data/information.xlsx')
         df = data_xls.parse(sheet_name='TumorHospital')
         for i in df.index:
             if df.loc[i, 'use']:
-                file_id = df.loc[i, 'filename'][2:]
-                #if '14-13101' not in file_id: # debugging
-                #    continue
                 image_files = os.listdir('/home/DiskB/COAD_additional_data/TumorHospital')
                 for image_file in image_files:
                     if file_id in image_file and '.kfb' in image_file:
                         image_path = os.path.join('/home/DiskB/COAD_additional_data/TumorHospital', image_file)
-                        #print(image_path)
-                        read_samples(image_path, args.output_dir, file_id, sample_size=args.sample_n, repl_n=args.repl_n, source='TH', extractor=args.extractor)
+                        read_samples(image_path, args.output_dir, file_id, sample_size=args.sample_n, source='TH', extractor=args.extractor)
         
 if __name__ == "__main__":
     main()

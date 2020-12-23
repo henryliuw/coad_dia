@@ -52,7 +52,7 @@ class GNN(torch.nn.Module):
         # 3. Apply a final classifier
         # x = F.dropout(x, p=0.5, training=self.training)
         x = self.lin(x)
-        x = torch.nn.functional.sigmoid(x)
+        #x = torch.nn.functional.sigmoid(x)
         return x
 
     def save(self, save_file):
@@ -81,11 +81,12 @@ class DatasetLoader():
             useful_subset['OS.time'].fillna(useful_subset['OS.time'].mean(), inplace=True)
             size = len(useful_subset)
             for i in range(0, size):
+                if not useful_subset.loc[i, "stage"] == 'Stage II':
+                    continue
                 X_this_file = args.data_dir+'/tcga/'+str(i)+'_features.npy'
                 X_this = np.load(X_this_file, allow_pickle=True)
                 Y_this = useful_subset.loc[i, 'outcome'] == 'good'
                 Y_this_stage_two = useful_subset.loc[i, 'outcome2'] == 'good'
-                is_stage_two = useful_subset.loc[i, "stage"] == 'Stage II'
                 if len(X_this)==args.sample_n:
                     if X is None:
                         X = X_this.reshape(1, args.sample_n, feature_size)
@@ -94,9 +95,9 @@ class DatasetLoader():
                     loc_file = args.data_dir+'/tcga/'+str(i)+'_name.pkl'
                     image_path = os.path.join('/home/DiskB/tcga_coad_dia', useful_subset.loc[i, 'id'], useful_subset.loc[i, 'File me'])
                     if df_new is None:
-                        df_new = pd.DataFrame({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_path, 'loc_file':loc_file, 'stage_two':is_stage_two, "source":"tcga"}, index=[0])
+                        df_new = pd.DataFrame({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_path, 'loc_file':loc_file, 'stage_two':True, "source":"tcga"}, index=[0])
                     else:
-                        df_new = df_new.append({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_path, 'loc_file':loc_file, 'stage_two':is_stage_two, "source":"tcga"}, ignore_index=True)
+                        df_new = df_new.append({"y": Y_this, "y2": Y_this_stage_two, "time": useful_subset.loc[i, "OS.time"], 'sample_id':i, 'image_file':image_path, 'loc_file':loc_file, 'stage_two':True, "source":"tcga"}, ignore_index=True)
                 print("\r","reading data input  %d/%d from TCGA" % (i, size) , end='', flush=True)
             print("")
 
@@ -150,6 +151,8 @@ class DatasetLoader():
             
         # retrieve X, Y
         # always use stage_two
+
+
         data_source = ['tcga']
         if args.changhai:
             data_source.append('changhai')

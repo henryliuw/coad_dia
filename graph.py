@@ -1,7 +1,8 @@
-from module import DatasetLoader, GNN, CrossValidationSplitter
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+import torch
 import pickle
 import numpy as np
-import torch
 import torch.nn.functional as F
 import torch.nn as nn
 from torch_geometric.data import Data
@@ -9,9 +10,9 @@ import torch_geometric
 from torch_geometric.data import DataLoader
 import random
 from evaluation import accuracy, auc, c_index, recall, f1, precision
-import os
 from sklearn.cluster import KMeans
 from sklearn.metrics.pairwise import euclidean_distances as euclidean_dist
+from module import DatasetLoader, GNN, CrossValidationSplitter
 
 def main():
     import argparse
@@ -26,7 +27,7 @@ def main():
     parser.add_argument("--TH", action='store_true')
     args = parser.parse_args()
 
-    gpu = "cuda:1"
+    gpu = "cuda:2"
     n_epoch = 80
     acc_folds = []
     auc_folds = []
@@ -38,7 +39,8 @@ def main():
     n_manytimes = 8
 
     # caching
-    if True:
+    dataset, df = construct_graph_dataset(args, gpu)
+    '''if True:
     # if os.path.exists(os.path.join(args.data_dir, 'graph', 'graph_dataset.pkl')) and os.path.exists(os.path.join(args.data_dir, 'graph', 'graph_df.pkl')):
         print("loading cached graph data")
         with open(os.path.join(args.data_dir, 'graph', 'graph_dataset.pkl'), 'rb') as file:
@@ -53,10 +55,11 @@ def main():
             pickle.dump(dataset, file)
         with open(os.path.join(args.data_dir, 'graph', 'graph_df.pkl'), 'wb') as file:
             pickle.dump(df, file)
-    
+    '''
     splitter = CrossValidationSplitter(dataset, df, n=5, n_manytimes=n_manytimes)
     # criterion = torch.nn.CrossEntropyLoss()
-    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.5))
+    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.6))
+    #criterion = nn.BCELoss(pos_weight=torch.tensor(0.8))
     fold_num=0
     if not os.path.isdir(os.path.join(args.data_dir, 'model')):
         os.mkdir(os.path.join(args.data_dir, 'model'))
@@ -71,13 +74,13 @@ def main():
         auc_fold = None
         acc_fold = None
         early_stop_count = 0
-        model = GNN(32).to(gpu)
+        model = GNN(32).cuda()
         optimizer = torch.optim.RMSprop(model.parameters(), lr=0.0004, weight_decay=0.001)
 
         for epoch in range(n_epoch):
             model.train()
             for data in train_loader:  # Iterate in batches over the training dataset.
-                y_pred = model(data.x, data.edge_index, data.batch.to(gpu)).view(-1)  # Perform a single forward pass.
+                y_pred = model(data.x, data.edge_index, data.batch.cuda()).view(-1)  # Perform a single forward pass.
                 loss = criterion(y_pred, data.y)  # Compute the loss.
                 loss.backward()  # Derive gradients.
                 optimizer.step()  # Update parameters based on gradients.
@@ -85,10 +88,12 @@ def main():
 
             if epoch % 1 == 0:
                 model.eval()
-                y_pred_train, y_train = concat_result(train_loader, model, gpu)
-                y_pred_test, y_test = concat_result(test_loader, model, gpu)
+                y_pred_train, y_train = concat_result(train_loader, model)
+                y_pred_test, y_test = concat_result(test_loader, model)
                 loss_train, loss_test = criterion(y_pred_train, y_train), criterion(y_pred_test, y_test)
                 #loss_test = nn.functional.mse_loss(result_test, Y_test)
+                y_pred_test = torch.nn.functional.sigmoid(y_pred_test)
+                y_pred_train = torch.nn.functional.sigmoid(y_pred_train)
                 acc_train, acc_test = accuracy(y_pred_train, y_train), accuracy(y_pred_test, y_test)
                 auc_train, auc_test = auc(y_pred_train, y_train),  auc(y_pred_test, y_test)
                 c_index_train, c_index_test = c_index(y_pred_train, train_df), c_index(y_pred_test, test_df)
@@ -177,11 +182,11 @@ def to_PyG_graph(data, loc_file, y, model='None', gpu=None, threshold=80, eviden
         for j in range(len(A)):
             if A[i, j]:
                 edge_index.append((i,j))
-    edge_index = torch.tensor(edge_index).t().contiguous().to(gpu)
+    edge_index = torch.tensor(edge_index).t().contiguous().cuda()
     
-    x = data[:, all_idx].t().contiguous().to(gpu)
+    x = data[:, all_idx].t().contiguous().cuda()
     # x = score[all_idx].reshape(2 * evidence_n, 1)
-    graph_data = Data(x=x, edge_index=edge_index, y=torch.tensor(y, dtype=torch.float).to(gpu)) 
+    graph_data = Data(x=x, edge_index=edge_index, y=torch.tensor(y, dtype=torch.float).cuda()) 
 
     if return_edge:
 
@@ -246,11 +251,11 @@ def to_cluster_graph(data, image_file, y, gpu=None, threshold=20, evidence_n=200
         for j in range(len(A)):
             if A[i, j]:
                 edge_index.append((i,j))
-    edge_index = torch.tensor(edge_index).t().contiguous().to(gpu)
+    edge_index = torch.tensor(edge_index).t().contiguous().cuda()
     
-    x = torch.tensor(aggregated_feature).to(gpu)
+    x = torch.tensor(aggregated_feature).cuda()
     # x = score[all_idx].reshape(2 * evidence_n, 1)
-    graph_data = Data(x=x, edge_index=edge_index, y=torch.tensor(y, dtype=torch.float).to(gpu)) 
+    graph_data = Data(x=x, edge_index=edge_index, y=torch.tensor(y, dtype=torch.float).cuda()) 
 
     return graph_data
     #return graph_data, aggregated_location, edge_index.numpy().T
@@ -271,11 +276,11 @@ def construct_graph_dataset(args, gpu):
     print("")
     return dataset, dataloader.df
 
-def concat_result(dataloader, model, gpu):
+def concat_result(dataloader, model, gpu=True):
     out = []
     target = []
     for data in dataloader:
-        out.append(model(data.x, data.edge_index, data.batch.to(gpu)).view(-1))
+        out.append(model(data.x, data.edge_index, data.batch.cuda()).view(-1))
         target.append(data.y)
     return torch.cat(out), torch.cat(target)
 

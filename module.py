@@ -67,6 +67,7 @@ class DatasetLoader():
         # reading in preprocessed data
         X_cached_file = os.path.join(args.data_dir, 'X_%d.npy' % args.sample_n)
         df_cached_file = os.path.join(args.data_dir, 'df.csv')
+        
         if os.path.exists(X_cached_file) and os.path.exists(df_cached_file):
             print('loading cached data')
             with open(X_cached_file,'rb') as file:
@@ -172,9 +173,7 @@ class DatasetLoader():
         self.gpu = gpu
         self.X, self.Y = torch.Tensor(X), torch.Tensor(Y)
         self.df = df_new
-        self.image_split = args.image_split
-        #self._init_fold()
-        self.batch_size = args.batch_size
+        # self.batch_size = args.batch_size
 
 class CrossValidationSplitter():
     def __init__(self, dataset, df, n=5, n_manytimes=8):

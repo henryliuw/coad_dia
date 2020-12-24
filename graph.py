@@ -19,8 +19,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", default='data/new_2000', help='determine the base dir of the dataset document')
     parser.add_argument("--sample_n", default=2000, type=int, help='starting image index of preprocessing')
-    parser.add_argument("--evidence_n", default=500, type=int, help='how many top/bottom tiles to pick from')
-    parser.add_argument("--image_split", action='store_true', help='if use image_split')
+    parser.add_argument("--evidence_n", default=500, type=int, help='how many tiles to pick from while construction a graph representation')
     parser.add_argument("--batch_size", default=30, type=int, help="batch size")
     parser.add_argument("--threshold", default=25, type=float, help='threshold')
     parser.add_argument("--changhai", action='store_true', help='if use additional data')
@@ -36,7 +35,7 @@ def main():
     f1_folds_pos = []
     unsuccessful_count = 0
     model_count = 0
-    n_manytimes = 8
+    n_manytimes = 2
 
     # caching
     dataset, df = construct_graph_dataset(args, gpu)
@@ -56,6 +55,7 @@ def main():
         with open(os.path.join(args.data_dir, 'graph', 'graph_df.pkl'), 'wb') as file:
             pickle.dump(df, file)
     '''
+
     splitter = CrossValidationSplitter(dataset, df, n=5, n_manytimes=n_manytimes)
     # criterion = torch.nn.CrossEntropyLoss()
     criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(0.6))
